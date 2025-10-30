@@ -10,7 +10,7 @@
     body {
       background-color: #000;
       color: #ff0000;
-      font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+      font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -21,9 +21,8 @@
       overflow: hidden;
     }
 
-    /* Logo centralizada */
     .logo {
-      max-width: 500px;
+      max-width: 420px;
       width: 60%;
       height: auto;
       margin-top: auto;
@@ -31,7 +30,6 @@
       animation: fadeIn 1.5s ease;
     }
 
-    /* Container dos links fixado na parte inferior */
     .footer-links {
       display: flex;
       justify-content: center;
@@ -39,19 +37,18 @@
       width: 100%;
       padding-bottom: 2rem;
       font-size: 1.1rem;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
     }
 
-    /* Estilo dos links */
     a {
       color: #ff0000;
       text-decoration: none;
       position: relative;
-      font-weight: 400;
+      font-weight: 500;
       transition: color 0.3s ease, transform 0.3s ease;
     }
 
-    /* Linha animada sob o texto ao passar o mouse */
     a::after {
       content: "";
       position: absolute;
@@ -72,7 +69,6 @@
       width: 100%;
     }
 
-    /* Animação de entrada */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
