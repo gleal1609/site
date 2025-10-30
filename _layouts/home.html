@@ -1,0 +1,94 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reverso Filmes</title>
+  <style>
+    /* Layout geral */
+    body {
+      background-color: #000;
+      color: #ff0000;
+      font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    /* Logo centralizada */
+    .logo {
+      max-width: 500px;
+      width: 60%;
+      height: auto;
+      margin-top: auto;
+      margin-bottom: auto;
+      animation: fadeIn 1.5s ease;
+    }
+
+    /* Container dos links fixado na parte inferior */
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      width: 100%;
+      padding-bottom: 2rem;
+      font-size: 1.1rem;
+      letter-spacing: 0.08em;
+    }
+
+    /* Estilo dos links */
+    a {
+      color: #ff0000;
+      text-decoration: none;
+      position: relative;
+      font-weight: 400;
+      transition: color 0.3s ease, transform 0.3s ease;
+    }
+
+    /* Linha animada sob o texto ao passar o mouse */
+    a::after {
+      content: "";
+      position: absolute;
+      bottom: -4px;
+      left: 0;
+      width: 0%;
+      height: 1px;
+      background-color: #ff0000;
+      transition: width 0.3s ease;
+    }
+
+    a:hover {
+      color: #ff3333;
+      transform: translateY(-2px);
+    }
+
+    a:hover::after {
+      width: 100%;
+    }
+
+    /* Animação de entrada */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
+    <img src="/assets/images/logo/SIMBOLO_RVRS_SIMB_NEGATIVA_COR.png" alt="Reverso Filmes Logo" class="logo">
+  </div>
+
+  <div class="footer-links">
+    <a href="https://instagram.com/reversofilmes" target="_blank">Instagram</a>
+    <a href="https://youtube.com/@reversofilmes" target="_blank">YouTube</a>
+    <a href="https://wa.me/553196005678" target="_blank">WhatsApp</a>
+  </div>
+</body>
+</html>
