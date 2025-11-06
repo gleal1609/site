@@ -1,0 +1,96 @@
+body {
+  background-color: #000;
+  color: #ff0000;
+  font-family: 'Montserrat', 'Poppins', sans-serif;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  height: 100vh;
+  margin: 0;
+  text-align: center;
+  overflow: hidden;
+}
+
+.logo-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo {
+  max-width: 420px;
+  width: 70%;
+  height: auto;
+  margin-top: auto;
+  margin-bottom: auto;
+  animation: fadeIn 1.5s ease;
+}
+
+.footer-links {
+  display: flex;
+  justify-content: center;
+  gap: 3rem;
+  width: 100%;
+  padding-bottom: 2rem;
+  font-size: 1rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  flex-wrap: wrap;
+}
+
+a {
+  color: #ff0000;
+  text-decoration: none;
+  position: relative;
+  font-weight: 500;
+  transition: color 0.3s ease, transform 0.3s ease;
+}
+
+a::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0%;
+  height: 1px;
+  background-color: #ff0000;
+  transition: width 0.3s ease;
+}
+
+a:hover {
+  color: #ff3333;
+  transform: translateY(-2px);
+}
+
+a:hover::after {
+  width: 100%;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive tweaks */
+@media (max-width: 768px) {
+  .footer-links {
+    gap: 2rem;
+    font-size: 0.9rem;
+  }
+  .logo {
+    max-width: 280px;
+  }
+}
+
+@media (max-width: 480px) {
+  .footer-links {
+    flex-direction: column;
+    gap: 1rem;
+    padding-bottom: 1.5rem;
+  }
+  .logo {
+    max-width: 250px;
+  }
+}
