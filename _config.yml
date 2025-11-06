@@ -6,14 +6,12 @@ baseurl: ""
 url: "https://reversofilmes.com.br"  
 twitter_username: reversofilmes
 twitter_creator: "@reversofilmes"
-title: "Reverso Filmes"
-description: "Produtora de vídeo — reels, clipes, filmes e experimentos visuais."
 
 # site-wide OG fallbacks
 og_image: /assets/og/default-1200x630.png
 og_image_width: 1200
 og_image_height: 630
-og_image_alt: "Reverso Filmes — frame de destaque"
+og_image_alt: "Reverso Filmes — O poder de ver o mundo ao contrário"
 og_locale: pt_BR
 
 # Build settings
