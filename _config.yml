@@ -2,10 +2,19 @@ title: Reverso Filmes
 email: contato@reversofilmes.com.br
 description: >- # this means to ignore newlines until "baseurl:"
   Reverso filmes é uma empresa criativa voltada para soluções audiovisuais completas, com foco em inovação, tecnologia e comunicação visual de impacto.
-baseurl: "" # the subpath of your site, e.g. /blog
-url: "" # the base hostname & protocol for your site, e.g. http://example.com
-twitter_username: jekyllrb
-github_username:  jekyll
+baseurl: "" 
+url: "https://reversofilmes.com.br"  
+twitter_username: reversofilmes
+twitter_creator: "@reversofilmes"
+title: "Reverso Filmes"
+description: "Produtora de vídeo — reels, clipes, filmes e experimentos visuais."
+
+# site-wide OG fallbacks
+og_image: /assets/og/default-1200x630.png
+og_image_width: 1200
+og_image_height: 630
+og_image_alt: "Reverso Filmes — frame de destaque"
+og_locale: pt_BR
 
 # Build settings
 theme: minima
