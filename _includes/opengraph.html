@@ -1,0 +1,77 @@
+{%- comment -%}
+Reusable Open Graph + Twitter Card meta
+Usage: {% include opengraph.html %}
+Page/front-matter fields (all optional, with sensible fallbacks):
+- title, description
+- og_type: "website" | "article" | "video.other" ...
+- og_image: "/assets/og/default.jpg" (single image)
+- og_images: ["/assets/og/one.jpg", "/assets/og/two.jpg"] (multiple; first wins)
+- og_image_alt, og_image_width, og_image_height
+- twitter_card: "summary_large_image" | "summary"
+- twitter_creator: "@yourhandle"
+- video: { url: "...mp4", secure_url: "...mp4", type: "video/mp4", width: 1280, height: 720, duration: 20 }
+- noindex: true (to block indexing)
+{%- endcomment -%}
+
+{%- assign page_title = page.title | default: site.title -%}
+{%- assign page_desc  = page.description | default: site.description -%}
+{%- assign page_type  = page.og_type | default: 'website' -%}
+{%- assign card_type  = page.twitter_card | default: 'summary_large_image' -%}
+
+{%- comment -%} Resolve image: prefer array, then single, then site default {%- endcomment -%}
+{%- assign img = nil -%}
+{%- if page.og_images and page.og_images.size > 0 -%}
+  {%- assign img = page.og_images[0] -%}
+{%- elsif page.og_image -%}
+  {%- assign img = page.og_image -%}
+{%- elsif site.og_image -%}
+  {%- assign img = site.og_image -%}
+{%- endif -%}
+
+{%- assign image_alt   = page.og_image_alt | default: site.og_image_alt | default: page_title -%}
+{%- assign image_w     = page.og_image_width | default: site.og_image_width -%}
+{%- assign image_h     = page.og_image_height | default: site.og_image_height -%}
+{%- assign canon_url   = page.url | absolute_url -%}
+{%- assign locale_code = site.og_locale | default: 'pt_BR' -%}
+
+{%- if page.noindex %}<meta name="robots" content="noindex, nofollow">{% endif -%}
+<link rel="canonical" href="{{ canon_url }}"/>
+
+<meta property="og:locale" content="{{ locale_code }}"/>
+<meta property="og:site_name" content="{{ site.title | escape }}"/>
+
+<meta property="og:type" content="{{ page_type }}"/>
+<meta property="og:title" content="{{ page_title | escape }}"/>
+<meta property="og:description" content="{{ page_desc | strip_newlines | truncate: 300 | escape }}"/>
+<meta property="og:url" content="{{ canon_url }}"/>
+
+{%- if img -%}
+  <meta property="og:image" content="{{ img | absolute_url }}"/>
+  <meta property="og:image:alt" content="{{ image_alt | escape }}"/>
+  {%- if image_w %}<meta property="og:image:width" content="{{ image_w }}"/>{% endif -%}
+  {%- if image_h %}<meta property="og:image:height" content="{{ image_h }}"/>{% endif -%}
+{%- endif -%}
+
+{%- if page.og_images and page.og_images.size > 1 -%}
+  {%- for extra in page.og_images offset:1 -%}
+    <meta property="og:image" content="{{ extra | absolute_url }}"/>
+  {%- endfor -%}
+{%- endif -%}
+
+{%- if page.video and page.video.url -%}
+  <meta property="og:video" content="{{ page.video.url | absolute_url }}"/>
+  {%- if page.video.secure_url %}<meta property="og:video:secure_url" content="{{ page.video.secure_url | absolute_url }}"/>{% endif -%}
+  {%- if page.video.type %}<meta property="og:video:type" content="{{ page.video.type }}"/>{% endif -%}
+  {%- if page.video.width %}<meta property="og:video:width" content="{{ page.video.width }}"/>{% endif -%}
+  {%- if page.video.height %}<meta property="og:video:height" content="{{ page.video.height }}"/>{% endif -%}
+  {%- if page.video.duration %}<meta property="video:duration" content="{{ page.video.duration }}"/>{% endif -%}
+{%- endif -%}
+
+{%- comment -%} Twitter {%- endcomment -%}
+<meta name="twitter:card" content="{{ card_type }}"/>
+{%- if site.twitter_username %}<meta name="twitter:site" content="@{{ site.twitter_username }}"/>{% endif -%}
+{%- assign tw_creator = page.twitter_creator | default: site.twitter_creator -%}
+{%- if tw_creator %}<meta name="twitter:creator" content="{{ tw_creator }}"/>{% endif -%}
+<meta name="twitter:title" content="{{ page_title | escape }}"/>
+<meta name="twitter:description" content="{{ page_desc | strip_newlines | truncate: 200 | escape }}"/>
+{%- if img -%}<meta name="twitter:image" content="{{ img | absolute_url }}"/>{% endif -%}
