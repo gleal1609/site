@@ -1,0 +1,103 @@
+---
+layout: none
+---
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page.title }} | {{ site.title }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Poppins:wght@400;500&display=swap" rel="stylesheet" />
+
+  {% include header.html %}
+  
+  {% include opengraph.html %}
+
+  <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+</head>
+<body>
+  <div class="project-detail-page">
+    <!-- Navigation -->
+    <nav class="project-nav">
+      <a href="{{ '/' | relative_url }}" class="nav-link">
+        <i class="fa-solid fa-arrow-left"></i> Home
+      </a>
+      <a href="{{ '/projetos/' | relative_url }}" class="nav-link">
+        <i class="fa-solid fa-grid-2"></i> Projetos
+      </a>
+    </nav>
+
+    <!-- Title -->
+    <header class="project-hero">
+      <h1 class="project-detail-title">{{ page.title }}</h1>
+      {% if page.client or page.year or page.service_types %}
+        <div class="project-meta">
+          {% if page.client %}
+            <span class="project-detail-client">{{ page.client }}</span>
+          {% endif %}
+          {% if page.year %}
+            <span class="project-year">{{ page.year }}</span>
+          {% endif %}
+          {% if page.service_types and page.service_types.size > 0 %}
+            <div class="project-service-types">
+              {% for service_type in page.service_types %}
+                <span class="service-type-tag">{{ service_type }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+    </header>
+
+    <!-- Thumbnail Image -->
+    {% if page.thumbnail %}
+      <section class="project-thumbnail-section">
+        <img 
+          src="{{ page.thumbnail | relative_url }}" 
+          alt="{{ page.title }}"
+          class="project-thumbnail-image"
+          loading="eager"
+        />
+      </section>
+    {% endif %}
+
+    <!-- Content -->
+    <main class="project-content">
+      <!-- YouTube Video -->
+      {% if page.youtube_url %}
+        <section class="project-video-section">
+          <h2 class="section-title">Vídeo</h2>
+          <div class="video-container">
+            {% assign youtube_id = page.youtube_url | replace: 'https://www.youtube.com/watch?v=', '' | replace: 'https://youtube.com/watch?v=', '' | replace: 'https://youtu.be/', '' | replace: 'https://www.youtu.be/', '' | split: '&' | first %}
+            <iframe 
+              src="https://www.youtube.com/embed/{{ youtube_id }}?rel=0" 
+              frameborder="0" 
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+              allowfullscreen
+              class="youtube-embed"
+              loading="lazy"
+            ></iframe>
+          </div>
+        </section>
+      {% endif %}
+
+      <!-- PixieSet Gallery -->
+      {% if page.pixieset_url %}
+        <section class="project-gallery-section">
+          <h2 class="section-title">Galeria de Fotos</h2>
+          <div class="pixieset-container">
+            <iframe 
+              src="{{ page.pixieset_url }}" 
+              frameborder="0" 
+              allowfullscreen
+              class="pixieset-embed"
+              loading="lazy"
+            ></iframe>
+          </div>
+        </section>
+      {% endif %}
+    </main>
+  </div>
+</body>
+</html>

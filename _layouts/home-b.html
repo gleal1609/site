@@ -1,0 +1,25 @@
+---
+layout: none
+---
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Home B | {{ site.title }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Poppins:wght@400;500&display=swap" rel="stylesheet" />
+
+  {% include header.html %}
+  {% include opengraph.html %}
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="{{ '/assets/css/home-b.css' | relative_url }}">
+  <script src="{{ '/assets/js/home-b.js' | relative_url }}" defer></script>
+</head>
+<body class="home-variant home-variant-b">
+  {% include nav/nav-b.html %}
+  {% include corner-logo.html %}
+  {% include projects-grid-home-b.html %}
+</body>
+</html>

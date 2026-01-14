@@ -1,0 +1,24 @@
+---
+layout: null
+permalink: /projects.json
+---
+[
+{% for project in site.projects %}
+  {% capture search_blob %}{{ project.title | downcase }} {{ project.client | downcase }} {{ project.service_types | join: " " | downcase }}{% endcapture %}
+  {
+    "title": {{ project.title | jsonify }},
+    "thumbnail": {{ project.thumbnail | jsonify }},
+    "hover_preview": {% if project.hover_preview %}{{ project.hover_preview | jsonify }}{% else %}null{% endif %},
+    "service_types": {{ project.service_types | jsonify }},
+    "client": {{ project.client | jsonify }},
+    "date_mmddyyyy": {{ project.date_mmddyyyy | jsonify }},
+    "year": {{ project.year }},
+    "show_on_home": {% if project.show_on_home %}true{% else %}false{% endif %},
+    "order": {% if project.order %}{{ project.order }}{% else %}999{% endif %},
+    "pixieset_url": {% if project.pixieset_url %}{{ project.pixieset_url | jsonify }}{% else %}null{% endif %},
+    "youtube_url": {% if project.youtube_url %}{{ project.youtube_url | jsonify }}{% else %}null{% endif %},
+    "url": {{ project.url | jsonify }},
+    "search_blob": {{ search_blob | strip | jsonify }}
+  }{% unless forloop.last %},{% endunless %}
+{% endfor %}
+]

@@ -1,0 +1,24 @@
+{% assign home_projects = site.projects | where: "show_on_home", true %}
+{% assign sorted_projects = home_projects | sort: "date_mmddyyyy" | reverse %}
+{% assign sorted_projects = sorted_projects | sort: "order" %}
+<div class="home-grid home-grid-a">
+  {% for project in sorted_projects %}
+    <a href="{{ project.url | relative_url }}" class="home-project-item home-project-item-a" aria-label="{{ project.title }}">
+      <div class="home-project-thumbnail">
+        <img 
+          src="{{ project.thumbnail | relative_url }}" 
+          alt="{{ project.title }}"
+          loading="lazy"
+        />
+      </div>
+      <div class="home-project-info">
+        <h3 class="home-project-title">{{ project.title }}</h3>
+        <div class="home-project-meta">
+          <span class="home-project-year">{{ project.year }}</span>
+          <span class="home-project-client">{{ project.client }}</span>
+          <span class="home-project-services">{{ project.service_types | join: ', ' }}</span>
+        </div>
+      </div>
+    </a>
+  {% endfor %}
+</div>

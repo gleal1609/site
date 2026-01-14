@@ -1,0 +1,144 @@
+---
+layout: none
+---
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page.title }} | {{ site.title }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Poppins:wght@400;500&display=swap" rel="stylesheet" />
+
+  {% include header.html %}
+  
+  {% include opengraph.html %}
+
+  <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+  
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+  <div class="projects-page" x-data="projectsPage('{{ '/projects.json' | relative_url }}')" x-init="init()">
+    <!-- Header with navigation -->
+    <header class="projects-header">
+      <a href="{{ '/' | relative_url }}" class="back-link">
+        <i class="fa-solid fa-arrow-left"></i> Home
+      </a>
+      <h1 class="projects-title">{{ page.title }}</h1>
+    </header>
+
+    <!-- Filters Section -->
+    <div class="filters-section">
+      <!-- Search Input -->
+      <div class="filter-group">
+        <label for="search-input" class="filter-label">Buscar</label>
+        <input 
+          type="text" 
+          id="search-input"
+          class="filter-input" 
+          placeholder="Buscar por título, cliente ou tipo de serviço..."
+          x-model="searchTerm"
+          @input="updateFilters()"
+        />
+      </div>
+
+      <!-- Service Types Filter -->
+      <div class="filter-group">
+        <label class="filter-label">Tipos de Serviço</label>
+        <div class="filter-checkboxes" x-show="availableServiceTypes.length > 0">
+          <template x-for="serviceType in availableServiceTypes" :key="serviceType">
+            <label class="checkbox-label">
+              <input 
+                type="checkbox" 
+                :value="serviceType"
+                x-model="selectedServiceTypes"
+                @change="updateFilters()"
+              />
+              <span x-text="serviceType"></span>
+            </label>
+          </template>
+        </div>
+        <p x-show="availableServiceTypes.length === 0" class="filter-empty">Carregando...</p>
+      </div>
+
+      <!-- Year Filter -->
+      <div class="filter-group">
+        <label for="year-select" class="filter-label">Ano</label>
+        <select 
+          id="year-select"
+          class="filter-select" 
+          x-model="selectedYear"
+          @change="updateFilters()"
+        >
+          <option value="">Todos os anos</option>
+          <template x-for="year in availableYears" :key="year">
+            <option :value="year" x-text="year"></option>
+          </template>
+        </select>
+      </div>
+
+      <!-- Clear Filters Button -->
+      <div class="filter-group">
+        <button 
+          class="clear-filters-btn" 
+          @click="clearFilters()"
+          :disabled="!hasActiveFilters()"
+        >
+          Limpar Filtros
+        </button>
+      </div>
+
+      <!-- Results Count -->
+      <div class="filter-group">
+        <p class="results-count">
+          <span x-text="filteredProjects.length"></span> 
+          <span x-text="filteredProjects.length === 1 ? 'projeto encontrado' : 'projetos encontrados'"></span>
+        </p>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div class="loading-state" x-show="loading">
+      <p>Carregando projetos...</p>
+    </div>
+
+    <!-- Error State -->
+    <div class="error-state" x-show="error" x-cloak>
+      <p x-text="error"></p>
+    </div>
+
+    <!-- Projects Grid -->
+    <div class="projects-list" x-show="!loading && !error" x-cloak>
+      <template x-for="project in filteredProjects" :key="project.url">
+        <a :href="project.url" class="project-card">
+          <div class="project-card-thumbnail">
+            <img 
+              :src="project.thumbnail" 
+              :alt="project.title"
+              loading="lazy"
+            />
+          </div>
+          <div class="project-card-info">
+            <h3 class="project-card-title" x-text="project.title"></h3>
+            <p class="project-card-client" x-text="project.client"></p>
+            <div class="project-card-meta">
+              <span class="project-card-year" x-text="project.year"></span>
+              <span class="project-card-services" x-text="project.service_types.join(', ')"></span>
+            </div>
+          </div>
+        </a>
+      </template>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" x-show="!loading && !error && filteredProjects.length === 0" x-cloak>
+      <p>Nenhum projeto encontrado com os filtros selecionados.</p>
+      <button class="clear-filters-btn" @click="clearFilters()">Limpar Filtros</button>
+    </div>
+  </div>
+
+  <script src="{{ '/assets/js/projects.js' | relative_url }}"></script>
+</body>
+</html>

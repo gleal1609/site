@@ -1,0 +1,119 @@
+---
+layout: none
+---
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page.title }} | {{ site.title }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Poppins:wght@400;500&display=swap" rel="stylesheet" />
+
+  {% include header.html %}
+  
+  {% include opengraph.html %}
+
+  <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+</head>
+<body>
+  <div class="about-page">
+    <!-- Navigation -->
+    <nav class="about-nav">
+      <a href="{{ '/' | relative_url }}" class="nav-link">
+        <i class="fa-solid fa-arrow-left"></i> Home
+      </a>
+      <a href="{{ '/projetos/' | relative_url }}" class="nav-link">
+        <i class="fa-solid fa-grid-2"></i> Projetos
+      </a>
+    </nav>
+
+    <!-- Logo Section -->
+    <section class="about-logo-section">
+      <img 
+        src="{{ '/assets/images/logo/CABECA_CURUPIRA_RVRS_NEGATIVA_COR.png' | relative_url }}" 
+        alt="Reverso Filmes Logo" 
+        class="about-logo"
+      />
+    </section>
+
+    <!-- Introduction Section -->
+    <section class="about-intro">
+      <div class="about-content-wrapper">
+        <h1 class="about-intro-title">O poder de ver o mundo ao contrário</h1>
+        <p class="about-intro-text">Nós somos uma produtora criativa</p>
+      </div>
+    </section>
+
+    <!-- Processos Section -->
+    <section class="about-processos">
+      <div class="about-content-wrapper">
+        <h2 class="about-section-title">Processo</h2>
+        <div class="processos-list">
+          <div class="processo-item">
+            <h3 class="processo-number">1</h3>
+            <div class="processo-content">
+              <h4 class="processo-title">Briefing</h4>
+              <p class="processo-description">Compreensão das necessidades e objetivos do cliente.</p>
+            </div>
+          </div>
+          <div class="processo-item">
+            <h3 class="processo-number">2</h3>
+            <div class="processo-content">
+              <h4 class="processo-title">Planejamento</h4>
+              <p class="processo-description">Definição de roteiro, cronograma e recursos.</p>
+            </div>
+          </div>
+          <div class="processo-item">
+            <h3 class="processo-number">3</h3>
+            <div class="processo-content">
+              <h4 class="processo-title">Produção</h4>
+              <p class="processo-description">Captação de imagens e áudio.</p>
+            </div>
+          </div>
+          <div class="processo-item">
+            <h3 class="processo-number">4</h3>
+            <div class="processo-content">
+              <h4 class="processo-title">Pós-produção</h4>
+              <p class="processo-description">Edição, correções e efeitos.</p>
+            </div>
+          </div>
+          <div class="processo-item">
+            <h3 class="processo-number">5</h3>
+            <div class="processo-content">
+              <h4 class="processo-title">Entrega</h4>
+              <p class="processo-description">Apresentação final adaptada aos canais de divulgação.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Serviços Section -->
+    <section class="about-servicos">
+      <div class="about-content-wrapper">
+        <h2 class="about-section-title">Serviços</h2>
+        <div class="servicos-list">
+          {% assign service_types_set = "" | split: "," %}
+          {% for project in site.projects %}
+            {% for service_type in project.service_types %}
+              {% unless service_types_set contains service_type %}
+                {% assign service_types_set = service_types_set | push: service_type %}
+              {% endunless %}
+            {% endfor %}
+          {% endfor %}
+          {% assign sorted_services = service_types_set | sort %}
+          {% for service_type in sorted_services %}
+            <a 
+              href="{{ '/projetos/' | relative_url }}#service={{ service_type | url_encode }}" 
+              class="servico-link"
+            >
+              {{ service_type }}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
