@@ -15,23 +15,14 @@ layout: none
   {% include opengraph.html %}
 
   <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/css/bottom-nav.css' | relative_url }}">
 </head>
 <body>
   <div class="about-page">
-    <!-- Navigation -->
-    <nav class="about-nav">
-      <a href="{{ '/' | relative_url }}" class="nav-link">
-        <i class="fa-solid fa-arrow-left"></i> Home
-      </a>
-      <a href="{{ '/projetos/' | relative_url }}" class="nav-link">
-        <i class="fa-solid fa-grid-2"></i> Projetos
-      </a>
-    </nav>
-
     <!-- Logo Section -->
     <section class="about-logo-section">
       <img 
-        src="{{ '/assets/images/logo/CABECA_CURUPIRA_RVRS_NEGATIVA_COR.png' | relative_url }}" 
+        src="{{ '/assets/images/logo/RVRS_LOGO_NEGATIVA_COR.png' | relative_url }}" 
         alt="Reverso Filmes Logo" 
         class="about-logo"
       />
@@ -115,5 +106,12 @@ layout: none
       </div>
     </section>
   </div>
+  
+  {% include bottom-nav.html %}
+  
+  <!-- GSAP for bottom nav animations -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script src="{{ '/assets/js/page-transitions.js' | relative_url }}"></script>
+  <script src="{{ '/assets/js/bottom-nav.js' | relative_url }}"></script>
 </body>
 </html>

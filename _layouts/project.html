@@ -15,19 +15,10 @@ layout: none
   {% include opengraph.html %}
 
   <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/css/bottom-nav.css' | relative_url }}">
 </head>
 <body>
   <div class="project-detail-page">
-    <!-- Navigation -->
-    <nav class="project-nav">
-      <a href="{{ '/' | relative_url }}" class="nav-link">
-        <i class="fa-solid fa-arrow-left"></i> Home
-      </a>
-      <a href="{{ '/projetos/' | relative_url }}" class="nav-link">
-        <i class="fa-solid fa-grid-2"></i> Projetos
-      </a>
-    </nav>
-
     <!-- Title -->
     <header class="project-hero">
       <h1 class="project-detail-title">{{ page.title }}</h1>
@@ -42,7 +33,7 @@ layout: none
           {% if page.service_types and page.service_types.size > 0 %}
             <div class="project-service-types">
               {% for service_type in page.service_types %}
-                <span class="service-type-tag">{{ service_type }}</span>
+                <a href="{{ '/projetos/' | relative_url }}#service={{ service_type | url_encode }}" class="service-type-tag">{{ service_type }}</a>
               {% endfor %}
             </div>
           {% endif %}
@@ -86,18 +77,32 @@ layout: none
       {% if page.pixieset_url %}
         <section class="project-gallery-section">
           <h2 class="section-title">Galeria de Fotos</h2>
-          <div class="pixieset-container">
-            <iframe 
-              src="{{ page.pixieset_url }}" 
-              frameborder="0" 
-              allowfullscreen
-              class="pixieset-embed"
-              loading="lazy"
-            ></iframe>
+          <div class="pixieset-wrapper">
+            <div class="pixieset-scrollable-container">
+              <iframe 
+                src="{{ page.pixieset_url }}" 
+                frameborder="0" 
+                allowfullscreen
+                class="pixieset-embed"
+                loading="lazy"
+              ></iframe>
+            </div>
+          </div>
+          <div class="pixieset-link-wrapper">
+            <a href="{{ page.pixieset_url }}" target="_blank" rel="noopener" class="pixieset-external-link">
+              <i class="fa-solid fa-external-link"></i> Abrir galeria completa em nova aba
+            </a>
           </div>
         </section>
       {% endif %}
     </main>
   </div>
+  
+  {% include bottom-nav.html %}
+  
+  <!-- GSAP for bottom nav animations -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script src="{{ '/assets/js/page-transitions.js' | relative_url }}"></script>
+  <script src="{{ '/assets/js/bottom-nav.js' | relative_url }}"></script>
 </body>
 </html>

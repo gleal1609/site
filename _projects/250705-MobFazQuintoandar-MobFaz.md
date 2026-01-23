@@ -9,6 +9,8 @@ date_mmddyyyy: "07052025"
 year: 2025
 show_on_home: true
 order: 11
+home_order: 11
+home_size: 2x2
 ---
 
 Mobfaz Quintoandar Juninamtc Aftermoviemobile

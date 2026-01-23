@@ -15,6 +15,7 @@ layout: none
   {% include opengraph.html %}
 
   <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/css/bottom-nav.css' | relative_url }}">
   
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -23,14 +24,21 @@ layout: none
   <div class="projects-page" x-data="projectsPage('{{ '/projects.json' | relative_url }}')" x-init="init()">
     <!-- Header with navigation -->
     <header class="projects-header">
-      <a href="{{ '/' | relative_url }}" class="back-link">
-        <i class="fa-solid fa-arrow-left"></i> Home
-      </a>
       <h1 class="projects-title">{{ page.title }}</h1>
+      <button 
+        class="filter-toggle-btn" 
+        @click="showFilters = !showFilters"
+        :aria-expanded="showFilters"
+        aria-label="Mostrar filtros"
+      >
+        <i class="fa-solid fa-filter"></i>
+        <span>Filtros</span>
+        <i class="fa-solid fa-chevron-down filter-chevron" :class="{ 'rotated': showFilters }"></i>
+      </button>
     </header>
 
     <!-- Filters Section -->
-    <div class="filters-section">
+    <div class="filters-section" x-show="showFilters" x-transition:enter="filter-enter" x-transition:enter-start="filter-enter-start" x-transition:enter-end="filter-enter-end" x-transition:leave="filter-leave" x-transition:leave-start="filter-leave-start" x-transition:leave-end="filter-leave-end">
       <!-- Search Input -->
       <div class="filter-group">
         <label for="search-input" class="filter-label">Buscar</label>
@@ -110,9 +118,9 @@ layout: none
     </div>
 
     <!-- Projects Grid -->
-    <div class="projects-list" x-show="!loading && !error" x-cloak>
+    <div class="projects-grid-simple" x-show="!loading && !error" x-cloak>
       <template x-for="project in filteredProjects" :key="project.url">
-        <a :href="project.url" class="project-card">
+        <a :href="project.url" class="project-card-simple" :aria-label="project.title">
           <div class="project-card-thumbnail">
             <img 
               :src="project.thumbnail" 
@@ -120,13 +128,9 @@ layout: none
               loading="lazy"
             />
           </div>
-          <div class="project-card-info">
+          <div class="project-card-content">
             <h3 class="project-card-title" x-text="project.title"></h3>
-            <p class="project-card-client" x-text="project.client"></p>
-            <div class="project-card-meta">
-              <span class="project-card-year" x-text="project.year"></span>
-              <span class="project-card-services" x-text="project.service_types.join(', ')"></span>
-            </div>
+            <p class="project-card-client" x-text="project.client" x-show="project.client"></p>
           </div>
         </a>
       </template>
@@ -139,6 +143,12 @@ layout: none
     </div>
   </div>
 
+  {% include bottom-nav.html %}
+  
+  <!-- GSAP for bottom nav animations -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script src="{{ '/assets/js/page-transitions.js' | relative_url }}"></script>
   <script src="{{ '/assets/js/projects.js' | relative_url }}"></script>
+  <script src="{{ '/assets/js/bottom-nav.js' | relative_url }}"></script>
 </body>
 </html>

@@ -9,6 +9,8 @@ date_mmddyyyy: "05102025"
 year: 2025
 show_on_home: true
 order: 4
+home_order: 4
+home_size: 1x1
 ---
 
 RedBull DYS BH US Hip Hop

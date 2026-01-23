@@ -13,10 +13,14 @@ function projectsPage(projectsJsonUrl) {
     searchTerm: '',
     selectedServiceTypes: [],
     selectedYear: '',
+    showFilters: false,
     
     // Available filter options (populated from projects)
     availableServiceTypes: [],
     availableYears: [],
+    
+    // URL sync debounce timer
+    urlSyncTimer: null,
     
     /**
      * Initialize the page - fetch projects and set up filters
@@ -51,6 +55,10 @@ function projectsPage(projectsJsonUrl) {
         // Use setTimeout to ensure Alpine has finished initializing
         setTimeout(() => {
           this.applyUrlFilters();
+          // If filters are applied from URL, show the filter section
+          if (window.location.hash && window.location.hash.length > 1) {
+            this.showFilters = true;
+          }
         }, 0);
         
         this.loading = false;
@@ -63,21 +71,25 @@ function projectsPage(projectsJsonUrl) {
     
     /**
      * Apply filters from URL hash parameters
-     * Supports format: #service=ARTISTICOS or #service=ARTISTICOS&year=2025
+     * Supports format: #search=term&service=ARTISTICOS&service=Type2&year=2025
      */
     applyUrlFilters() {
       if (window.location.hash) {
         const hash = window.location.hash.substring(1); // Remove #
         const params = new URLSearchParams(hash);
         
-        // Apply service type filter
-        const serviceParam = params.get('service');
-        if (serviceParam) {
-          const decodedService = decodeURIComponent(serviceParam);
-          // Check if this service type exists in available options
-          if (this.availableServiceTypes.includes(decodedService)) {
-            this.selectedServiceTypes = [decodedService];
-          }
+        // Apply search term filter
+        const searchParam = params.get('search');
+        if (searchParam) {
+          this.searchTerm = decodeURIComponent(searchParam);
+        }
+        
+        // Apply service type filters (support multiple)
+        const serviceParams = params.getAll('service');
+        if (serviceParams.length > 0) {
+          this.selectedServiceTypes = serviceParams
+            .map(param => decodeURIComponent(param))
+            .filter(service => this.availableServiceTypes.includes(service));
         }
         
         // Apply year filter
@@ -87,7 +99,7 @@ function projectsPage(projectsJsonUrl) {
         }
         
         // Update filters if any were applied
-        if (serviceParam || yearParam) {
+        if (searchParam || serviceParams.length > 0 || yearParam) {
           this.updateFilters();
         }
       }
@@ -160,6 +172,48 @@ function projectsPage(projectsJsonUrl) {
       }
       
       this.filteredProjects = filtered;
+      
+      // Sync filters to URL (debounced for search input)
+      this.syncFiltersToUrl();
+    },
+    
+    /**
+     * Sync current filter state to URL hash
+     */
+    syncFiltersToUrl() {
+      // Clear existing timer
+      if (this.urlSyncTimer) {
+        clearTimeout(this.urlSyncTimer);
+      }
+      
+      // Debounce URL updates (especially for search input)
+      this.urlSyncTimer = setTimeout(() => {
+        const params = new URLSearchParams();
+        
+        // Add search term
+        if (this.searchTerm.trim()) {
+          params.set('search', encodeURIComponent(this.searchTerm.trim()));
+        }
+        
+        // Add service types (multiple values)
+        this.selectedServiceTypes.forEach(serviceType => {
+          params.append('service', encodeURIComponent(serviceType));
+        });
+        
+        // Add year
+        if (this.selectedYear) {
+          params.set('year', this.selectedYear);
+        }
+        
+        // Update URL hash without page reload
+        const newHash = params.toString();
+        const newUrl = newHash ? `#${newHash}` : '';
+        
+        // Only update if hash actually changed to avoid unnecessary history entries
+        if (window.location.hash !== newUrl) {
+          history.pushState(null, '', window.location.pathname + newUrl);
+        }
+      }, 300); // 300ms debounce for search input
     },
     
     /**
@@ -170,6 +224,8 @@ function projectsPage(projectsJsonUrl) {
       this.selectedServiceTypes = [];
       this.selectedYear = '';
       this.updateFilters();
+      // Clear URL hash
+      history.pushState(null, '', window.location.pathname);
     },
     
     /**

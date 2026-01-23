@@ -1,16 +1,13 @@
 {% assign home_projects = site.projects | where: "show_on_home", true %}
-{% comment %} Sort by date descending first, then by order ascending (Liquid sorts are stable) {% endcomment %}
+{% comment %} Sort by home_order (ascending), fallback to order, then date {% endcomment %}
 {% assign sorted_projects = home_projects | sort: "date_mmddyyyy" | reverse %}
 {% assign sorted_projects = sorted_projects | sort: "order" %}
+{% assign sorted_projects = sorted_projects | sort: "home_order" %}
 {% comment %} Total projects to display: {{ sorted_projects.size }} {% endcomment %}
-<div class="grid-style-switcher">
-  <button class="style-btn active" data-style="1" aria-label="Grid Style 1">1</button>
-  <button class="style-btn" data-style="2" aria-label="Grid Style 2">2</button>
-  <button class="style-btn" data-style="3" aria-label="Grid Style 3">3</button>
-</div>
-<div class="projects-grid grid-style-1" data-total-projects="{{ sorted_projects.size }}">
-  {% for project in sorted_projects %}
-    <a href="{{ project.url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}">
+<div id="masonry-container" class="masonry-container">
+  <div class="projects-grid" data-total-projects="{{ sorted_projects.size }}">
+    {% for project in sorted_projects %}
+      <a href="{{ project.url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-home-order="{{ project.home_order | default: 999 }}">
       <div class="project-thumbnail-container">
         {% if project.hover_preview %}
           <video 
@@ -37,156 +34,15 @@
           <p class="project-client">{{ project.client }}</p>
         {% endif %}
       </div>
-    </a>
-  {% endfor %}
+      </a>
+    {% endfor %}
+  </div>
 </div>
 
 <script>
+// Video hover functionality is preserved below
 document.addEventListener("DOMContentLoaded", () => {
-  const grid = document.querySelector(".projects-grid");
   const projectItems = document.querySelectorAll(".project-item");
-  const styleButtons = document.querySelectorAll(".style-btn");
-  let currentStyle = 1;
-  
-  // Grid style switching
-  styleButtons.forEach(btn => {
-    btn.addEventListener("click", () => {
-      const newStyle = parseInt(btn.dataset.style);
-      if (newStyle === currentStyle) return;
-      
-      // Update active button
-      styleButtons.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      
-      // Animate grid transition
-      grid.style.opacity = "0";
-      grid.style.transform = "scale(0.95)";
-      
-      setTimeout(() => {
-        // Remove old style class
-        grid.classList.remove(`grid-style-${currentStyle}`);
-        // Add new style class
-        grid.classList.add(`grid-style-${newStyle}`);
-        currentStyle = newStyle;
-        
-        // Reinitialize masonry if needed
-        if (newStyle === 1) {
-          initMasonry();
-        } else {
-          // Clear row spans for uniform grids
-          projectItems.forEach(item => {
-            item.style.gridRowEnd = "";
-          });
-        }
-        
-        // Animate items in with stagger
-        projectItems.forEach((item, index) => {
-          item.style.animationDelay = `${index * 0.02}s`;
-          item.style.animation = 'none';
-          setTimeout(() => {
-            item.style.animation = 'fadeInItem 0.5s ease forwards';
-          }, 10);
-        });
-        
-        // Fade in grid
-        grid.style.opacity = "1";
-        grid.style.transform = "scale(1)";
-      }, 300);
-    });
-  });
-  
-  // Debug: Log how many items were found
-  console.log('Projects found:', projectItems.length);
-  
-  // Get current row height from computed styles
-  function getRowHeight() {
-    const computedStyle = window.getComputedStyle(grid);
-    const gridAutoRows = computedStyle.gridAutoRows;
-    // Parse the value (e.g., "200px" -> 200)
-    return parseFloat(gridAutoRows) || 200;
-  }
-  
-  // Masonry layout: calculate row spans based on image aspect ratio
-  function calculateRowSpan(item, img, baseRowHeight) {
-    const aspectRatio = img.naturalHeight / img.naturalWidth;
-    const itemWidth = item.offsetWidth || item.getBoundingClientRect().width;
-    const itemHeight = itemWidth * aspectRatio;
-    const rowSpan = Math.max(1, Math.ceil(itemHeight / baseRowHeight));
-    item.style.gridRowEnd = `span ${rowSpan}`;
-  }
-  
-  // Initialize masonry layout for all items (only for style 1)
-  function initMasonry() {
-    if (!grid.classList.contains('grid-style-1')) return;
-    
-    const rowHeight = getRowHeight();
-    
-    projectItems.forEach((item, index) => {
-      // Set default span immediately so item is visible
-      if (!item.style.gridRowEnd) {
-        item.style.gridRowEnd = 'span 2';
-      }
-      
-      const thumbnail = item.querySelector(".project-thumbnail");
-      if (!thumbnail) {
-        // Default span for items without thumbnails
-        item.style.gridRowEnd = 'span 2';
-        return;
-      }
-      
-      const processItem = () => {
-        if (thumbnail.naturalWidth > 0 && thumbnail.naturalHeight > 0) {
-          calculateRowSpan(item, thumbnail, rowHeight);
-        } else {
-          // Fallback if image dimensions aren't available
-          item.style.gridRowEnd = 'span 2';
-        }
-      };
-      
-      // Wait for image to load to get natural dimensions
-      if (thumbnail.complete && thumbnail.naturalWidth > 0) {
-        processItem();
-      } else {
-        thumbnail.addEventListener("load", processItem, { once: true });
-        thumbnail.addEventListener("error", () => {
-          // If image fails to load, still show the item
-          item.style.gridRowEnd = 'span 2';
-        }, { once: true });
-        // Fallback: use default span if image takes too long to load
-        setTimeout(() => {
-          if (!item.style.gridRowEnd || item.style.gridRowEnd === 'span 2') {
-            // Try to calculate if we have dimensions now
-            if (thumbnail.naturalWidth > 0) {
-              processItem();
-            }
-          }
-        }, 1000);
-      }
-    });
-    
-    // Ensure grid expands to show all content
-    grid.style.height = 'auto';
-  }
-  
-  // Initialize on load
-  initMasonry();
-  
-  // Animate items on initial load
-  projectItems.forEach((item, index) => {
-    item.style.animationDelay = `${index * 0.02}s`;
-    item.style.animation = 'fadeInItem 0.5s ease forwards';
-  });
-  
-  // Handle window resize
-  let resizeTimeout;
-  window.addEventListener("resize", () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-      if (currentStyle === 1) {
-        initMasonry();
-      }
-    }, 250);
-  });
   
   // Hover video functionality - each video handled independently
   console.log('=== Initializing video hover functionality ===');
