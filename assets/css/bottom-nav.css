@@ -40,6 +40,11 @@
   position: relative;
   padding: 0.5rem;
   overflow: visible;
+  /* Prevent text selection on desktop too */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 /* Center icon is bigger - styles applied to child elements */
@@ -113,12 +118,24 @@
 @media (max-width: 768px) {
   .bottom-nav {
     padding: 1rem 0;
+    /* Prevent text selection on entire nav */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
   }
   
   .bottom-nav-container {
     gap: 0.75rem;
     padding: 0 0.5rem;
     justify-content: space-around;
+    /* Prevent text selection */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
   }
   
   .bottom-nav-icon {
@@ -128,23 +145,9 @@
   }
   
   .bottom-nav-label {
-    position: absolute;
-    top: -32px;
-    left: 50%;
-    transform: translateX(-50%) translateY(0);
-    opacity: 0;
-    font-size: 0.8rem;
-    font-weight: 600;
-    max-width: 90px;
-    padding: 0.2rem 0.4rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    pointer-events: none;
-  }
-  
-  .bottom-nav-item.active .bottom-nav-label {
-    opacity: 1;
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
   }
   
   .bottom-nav-item {
@@ -152,6 +155,29 @@
     padding: 0.25rem;
     flex: 1;
     min-width: 0;
+    /* Prevent text selection and tap highlight */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+  
+  .bottom-nav-item * {
+    /* Prevent text selection on all child elements */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+  
+  .bottom-nav-icon {
+    /* Prevent tap highlight on icons */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
   }
   
   .bottom-nav-item-center .bottom-nav-icon {
@@ -182,15 +208,9 @@
   }
   
   .bottom-nav-label {
-    font-size: 0.75rem;
-    top: -28px;
-    max-width: 80px;
-    padding: 0.15rem 0.3rem;
-    opacity: 0;
-  }
-  
-  .bottom-nav-item.active .bottom-nav-label {
-    opacity: 1;
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
   }
   
   .bottom-nav-item-center .bottom-nav-icon {

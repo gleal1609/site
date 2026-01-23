@@ -6,64 +6,30 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  // Check if mobile - handle tap-to-reveal labels on mobile
+  // Check if mobile - labels should never appear on mobile
   const isMobile = window.innerWidth <= 768;
   
   if (isMobile) {
-    // On mobile, labels are hidden by default and appear briefly on tap
+    // On mobile, labels should never be visible
     const navItems = document.querySelectorAll('.bottom-nav-item');
-    const labelFadeDelay = 1500; // Show label for 1.5 seconds
     
     navItems.forEach((item) => {
       const label = item.querySelector('.bottom-nav-label');
-      let fadeTimeout = null;
       
       if (!label) return;
       
-      // Ensure labels are hidden initially
+      // Ensure labels are completely hidden and never shown
+      label.style.display = 'none';
+      label.style.visibility = 'hidden';
       label.style.opacity = '0';
       
-      // Handle tap/click to show label temporarily
-      item.addEventListener('click', (e) => {
-        // Clear any existing timeout
-        if (fadeTimeout) {
-          clearTimeout(fadeTimeout);
-        }
-        
-        // Remove active class from all items
-        navItems.forEach(navItem => navItem.classList.remove('active'));
-        
-        // Add active class to clicked item
-        item.classList.add('active');
-        
-        // Show label
-        if (typeof gsap !== 'undefined') {
-          gsap.to(label, {
-            opacity: 1,
-            duration: 0.2,
-            ease: 'power2.out'
-          });
-        } else {
-          label.style.opacity = '1';
-        }
-        
-        // Fade out after delay
-        fadeTimeout = setTimeout(() => {
-          if (typeof gsap !== 'undefined') {
-            gsap.to(label, {
-              opacity: 0,
-              duration: 0.3,
-              ease: 'power2.in',
-              onComplete: () => {
-                item.classList.remove('active');
-              }
-            });
-          } else {
-            label.style.opacity = '0';
-            item.classList.remove('active');
-          }
-        }, labelFadeDelay);
-      });
+      // Prevent any text selection on the entire item
+      item.style.webkitUserSelect = 'none';
+      item.style.mozUserSelect = 'none';
+      item.style.msUserSelect = 'none';
+      item.style.userSelect = 'none';
+      item.style.webkitTapHighlightColor = 'transparent';
+      item.style.webkitTouchCallout = 'none';
     });
     
     return;

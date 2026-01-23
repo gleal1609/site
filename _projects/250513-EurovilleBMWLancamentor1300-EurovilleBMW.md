@@ -4,7 +4,7 @@ thumbnail: /assets/img/projects/250513-EurovilleBMWLancamentor1300-EurovilleBMW-
 hover_preview: /assets/video/projects/250513-EurovilleBMWLancamentor1300-EurovilleBMW-preview.mp4
 pixieset_url: https://reversofilmes.pixieset.com/bmweurovillemotorradlancamentogsa1300/
 service_types:
-  - INSTITUCIONAL-CORPORATIVO
+  - INSTITUCIONAL
 client: "Euroville BMW"
 date_mmddyyyy: "05132025"
 year: 2025

@@ -3,7 +3,7 @@ title: "RedBull Cia2025 Pdvsamplingcia"
 thumbnail: /assets/img/projects/250618-RedBullCia2025-RedBull-thumbnail.jpg
 hover_preview: /assets/video/projects/250618-RedBullCia2025-RedBull-preview.mp4
 service_types:
-  - INSTITUCIONAL-CORPORATIVO
+  - INSTITUCIONAL
 client: "RedBull"
 date_mmddyyyy: "06182025"
 year: 2025
