@@ -10,6 +10,10 @@
   border-top: 1px solid rgba(255, 0, 0, 0.3);
   padding: 1rem 0;
   pointer-events: none;
+  /* Ensure menu always stays visible during page transitions */
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: block !important;
 }
 
 .bottom-nav-container {
@@ -22,6 +26,7 @@
   padding: 0 2rem;
   flex-wrap: wrap;
   pointer-events: auto;
+  overflow: visible;
 }
 
 .bottom-nav-item {
@@ -34,12 +39,10 @@
   transition: all 0.3s ease;
   position: relative;
   padding: 0.5rem;
+  overflow: visible;
 }
 
-.bottom-nav-item-center {
-  /* Center icon is bigger */
-}
-
+/* Center icon is bigger - styles applied to child elements */
 .bottom-nav-item-center .bottom-nav-icon {
   width: 60px;
   height: 60px;
@@ -79,14 +82,20 @@
   white-space: nowrap;
   position: absolute;
   top: -35px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
   pointer-events: none;
   background-color: black;
+  padding: 0.25rem 0.5rem;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .bottom-nav-item:hover .bottom-nav-label,
 .bottom-nav-item:focus .bottom-nav-label {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateX(-50%) translateY(0);
 }
 
 .bottom-nav-item:hover .bottom-nav-icon,
@@ -121,10 +130,21 @@
   .bottom-nav-label {
     position: absolute;
     top: -32px;
-    opacity: 1;
-    transform: translateY(0);
+    left: 50%;
+    transform: translateX(-50%) translateY(0);
+    opacity: 0;
     font-size: 0.8rem;
     font-weight: 600;
+    max-width: 90px;
+    padding: 0.2rem 0.4rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: none;
+  }
+  
+  .bottom-nav-item.active .bottom-nav-label {
+    opacity: 1;
   }
   
   .bottom-nav-item {
@@ -164,6 +184,13 @@
   .bottom-nav-label {
     font-size: 0.75rem;
     top: -28px;
+    max-width: 80px;
+    padding: 0.15rem 0.3rem;
+    opacity: 0;
+  }
+  
+  .bottom-nav-item.active .bottom-nav-label {
+    opacity: 1;
   }
   
   .bottom-nav-item-center .bottom-nav-icon {

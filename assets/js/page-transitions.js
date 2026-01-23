@@ -40,6 +40,16 @@
       bottomNav.style.setProperty('visibility', 'visible', 'important');
       bottomNav.style.setProperty('z-index', '2000', 'important');
       bottomNav.style.setProperty('pointer-events', 'auto', 'important');
+      bottomNav.style.setProperty('display', 'block', 'important');
+      // Prevent any transitions from affecting the bottom nav
+      bottomNav.style.setProperty('transition', 'none', 'important');
+      
+      // Also ensure all child elements are visible
+      const navItems = bottomNav.querySelectorAll('.bottom-nav-item, .bottom-nav-container');
+      navItems.forEach(item => {
+        item.style.setProperty('opacity', '1', 'important');
+        item.style.setProperty('visibility', 'visible', 'important');
+      });
     }
   }
 
@@ -58,14 +68,23 @@
         return;
       }
 
+      // Ensure bottom nav stays visible during fade out
+      ensureBottomNavVisible();
+      
       if (typeof gsap !== 'undefined') {
         // Use GSAP timeline for smooth animation
         const tl = gsap.timeline({
-          onComplete: resolve
+          onComplete: () => {
+            // Ensure bottom nav is still visible after fade out
+            ensureBottomNavVisible();
+            resolve();
+          }
         });
 
         // Fade out with slight scale and y movement for fluid effect
-        tl.to(contentElements, {
+        // Explicitly exclude bottom nav from animation
+        const elementsToAnimate = contentElements.filter(el => !el.classList.contains('bottom-nav') && !el.closest('.bottom-nav'));
+        tl.to(elementsToAnimate, {
           opacity: 0,
           y: -20,
           scale: 0.98,
@@ -75,13 +94,19 @@
         });
       } else {
         // Fallback to CSS transitions
+        // Explicitly exclude bottom nav from transitions
         contentElements.forEach(el => {
-          el.style.transition = `opacity ${TRANSITION_DURATION / 2}s ease-out, transform ${TRANSITION_DURATION / 2}s ease-out, visibility ${TRANSITION_DURATION / 2}s ease-out`;
-          el.style.opacity = '0';
-          el.style.visibility = 'hidden';
-          el.style.transform = 'translateY(-20px) scale(0.98)';
+          if (!el.classList.contains('bottom-nav') && !el.closest('.bottom-nav')) {
+            el.style.transition = `opacity ${TRANSITION_DURATION / 2}s ease-out, transform ${TRANSITION_DURATION / 2}s ease-out, visibility ${TRANSITION_DURATION / 2}s ease-out`;
+            el.style.opacity = '0';
+            el.style.visibility = 'hidden';
+            el.style.transform = 'translateY(-20px) scale(0.98)';
+          }
         });
-        setTimeout(resolve, (TRANSITION_DURATION / 2) * 1000);
+        setTimeout(() => {
+          ensureBottomNavVisible();
+          resolve();
+        }, (TRANSITION_DURATION / 2) * 1000);
       }
     });
   }
@@ -115,9 +140,15 @@
       // Mark body as loaded to allow CSS transitions
       document.body.classList.add('page-loaded');
 
+      // Ensure bottom nav is visible before fade in
+      ensureBottomNavVisible();
+      
       // Use requestAnimationFrame to ensure DOM is ready
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+          // Ensure bottom nav is still visible
+          ensureBottomNavVisible();
+          
           if (typeof gsap !== 'undefined') {
             // Use GSAP timeline for smooth animation
             const tl = gsap.timeline({
@@ -125,12 +156,16 @@
                 contentElements.forEach(el => {
                   el.style.willChange = 'auto';
                 });
+                // Ensure bottom nav is visible after fade in
+                ensureBottomNavVisible();
                 resolve();
               }
             });
 
             // Fade in with slight scale and y movement for fluid effect
-            tl.fromTo(contentElements, 
+            // Explicitly exclude bottom nav from animation
+            const elementsToAnimate = contentElements.filter(el => !el.classList.contains('bottom-nav') && !el.closest('.bottom-nav'));
+            tl.fromTo(elementsToAnimate, 
               {
                 opacity: 0,
                 y: 20,
@@ -147,15 +182,20 @@
             );
           } else {
             // Fallback to CSS transitions
+            // Explicitly exclude bottom nav from transitions
             contentElements.forEach(el => {
-              el.style.transition = `opacity ${TRANSITION_DURATION / 2}s ease-in, transform ${TRANSITION_DURATION / 2}s ease-in`;
-              el.style.opacity = '1';
-              el.style.transform = 'translateY(0) scale(1)';
+              if (!el.classList.contains('bottom-nav') && !el.closest('.bottom-nav')) {
+                el.style.transition = `opacity ${TRANSITION_DURATION / 2}s ease-in, transform ${TRANSITION_DURATION / 2}s ease-in`;
+                el.style.opacity = '1';
+                el.style.transform = 'translateY(0) scale(1)';
+              }
             });
             setTimeout(() => {
               contentElements.forEach(el => {
                 el.style.willChange = 'auto';
               });
+              // Ensure bottom nav is visible after fade in
+              ensureBottomNavVisible();
               resolve();
             }, (TRANSITION_DURATION / 2) * 1000);
           }
@@ -214,15 +254,22 @@
     isTransitioning = true;
     e.preventDefault();
 
+    // Ensure bottom nav stays visible before fade out
+    ensureBottomNavVisible();
+    
     // Fade out before navigation
     fadeOut()
       .then(() => {
+        // Ensure bottom nav is still visible before navigation
+        ensureBottomNavVisible();
         // Navigate to new page
         window.location.href = link.href;
       })
       .catch(err => {
         console.error('Transition error:', err);
         isTransitioning = false;
+        // Ensure bottom nav is visible even on error
+        ensureBottomNavVisible();
         // Fallback to normal navigation
         window.location.href = link.href;
       });
