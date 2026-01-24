@@ -49,8 +49,8 @@ html {
 }
 
 .intro-text {
-  font-family: 'Montserrat', sans-serif;
-  font-weight: 700;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 900;
   text-transform: uppercase;
   margin: 0;
   padding: 0;
@@ -62,6 +62,9 @@ html {
   width: 100%;
   max-width: 1400px;
   line-height: 1.1;
+  /* Center the block on screen but keep text left-aligned */
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .intro-line {
@@ -81,24 +84,66 @@ html {
 
 .intro-line-2 {
   align-self: flex-start;
-  margin-left: clamp(2rem, 8vw, 6rem);
+  /* margin-left: clamp(2rem, 8vw, 6rem); */
   margin-top: clamp(-0.5rem, -2vw, -1rem);
 }
 
 .intro-line-3.intro-mundo {
   color: #ff0000;
   font-size: clamp(5rem, 20vw, 14rem);
-  font-weight: 800;
-  align-self: center;
+  font-weight: 900;
+  align-self: flex-start;
   margin: clamp(-1rem, -4vw, -2rem) 0;
   letter-spacing: 0.02em;
   text-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+  width: fit-content;
 }
 
 .intro-line-4 {
   align-self: flex-start;
-  margin-left: clamp(1rem, 4vw, 3rem);
+  /* margin-left: clamp(1rem, 4vw, 3rem); */
   margin-top: clamp(-0.5rem, -2vw, -1rem);
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.intro-line-4a {
+  display: inline-block;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  white-space: nowrap;
+  color: #ffffff;
+  font-size: clamp(3rem, 12vw, 8rem);
+  letter-spacing: 0.05em;
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+  align-self: flex-start;
+}
+
+.intro-line-4b {
+  display: inline-block;
+  color: #ffffff;
+  font-size: clamp(3rem, 12vw, 8rem);
+  letter-spacing: 0.05em;
+  margin: 0;
+  padding: 0;
+  white-space: nowrap;
+  position: relative;
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+.intro-line-4b-outline {
+  color: transparent;
+  -webkit-text-stroke: 6px #ffffff;
+}
+
+.intro-line-4b .letter {
+  display: inline-block;
+  transform-origin: center;
+  transform-style: preserve-3d;
 }
 
 .intro-text-container.hidden {
@@ -109,50 +154,102 @@ html {
 /* Mobile adjustments for intro text */
 @media (max-width: 768px) {
   .intro-text-container {
-    padding: 1rem;
+    padding: 0.5rem;
+  }
+
+  .intro-text {
+    max-width: 100%;
+    width: 100%;
   }
 
   .intro-line {
-    font-size: clamp(2rem, 10vw, 5rem);
+    font-size: clamp(2.5rem, 10vw, 5rem);
+    width: 100%;
+    text-align: left;
   }
 
-  .intro-line-3.intro-mundo {
-    font-size: clamp(3.5rem, 18vw, 10rem);
-    margin: clamp(-0.5rem, -3vw, -1.5rem) 0;
+  .intro-line-1 {
+    margin-left: 0;
   }
 
   .intro-line-2 {
-    margin-left: clamp(1.5rem, 6vw, 4rem);
+    margin-left: 0;
+  }
+
+  .intro-line-3.intro-mundo {
+    font-size: clamp(3.5rem, 16vw, 7rem);
+    margin: clamp(-0.5rem, -3vw, -1.5rem) 0;
+    align-self: flex-start;
+    width: 100%;
   }
 
   .intro-line-4 {
-    margin-left: clamp(0.75rem, 3vw, 2rem);
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .intro-line-4a {
+    font-size: clamp(2.5rem, 10vw, 5rem);
+  }
+
+  .intro-line-4b {
+    font-size: clamp(2.5rem, 10vw, 5rem);
+  }
+
+  .intro-line-4b-outline {
+    -webkit-text-stroke: 3px #ffffff;
   }
 }
 
 @media (max-width: 480px) {
   .intro-text-container {
-    padding: 0.5rem;
+    padding: 0.25rem;
+  }
+
+  .intro-text {
+    max-width: 100%;
+    width: 100%;
   }
 
   .intro-line {
-    font-size: clamp(1.5rem, 8vw, 4rem);
+    font-size: clamp(2rem, 12vw, 4.5rem);
     letter-spacing: 0.03em;
+    width: 100%;
+    text-align: left;
   }
 
-  .intro-line-3.intro-mundo {
-    font-size: clamp(2.5rem, 16vw, 8rem);
-    margin: clamp(-0.25rem, -2vw, -1rem) 0;
+  .intro-line-1 {
+    margin-left: 0;
   }
 
   .intro-line-2 {
-    margin-left: clamp(1rem, 5vw, 3rem);
+    margin-left: 0;
     margin-top: clamp(-0.25rem, -1.5vw, -0.5rem);
   }
 
+  .intro-line-3.intro-mundo {
+    font-size: clamp(3rem, 18vw, 6rem);
+    margin: clamp(-0.25rem, -2vw, -1rem) 0;
+    align-self: flex-start;
+    width: 100%;
+  }
+
   .intro-line-4 {
-    margin-left: clamp(0.5rem, 2.5vw, 1.5rem);
+    margin-left: 0;
     margin-top: clamp(-0.25rem, -1.5vw, -0.5rem);
+    width: 100%;
+  }
+
+  .intro-line-4a {
+    font-size: clamp(2rem, 12vw, 4.5rem);
+  }
+
+  .intro-line-4b {
+    font-size: clamp(2rem, 12vw, 4.5rem);
+  }
+
+  .intro-line-4b-outline {
+    -webkit-text-stroke: 2.5px #ffffff;
   }
 }
 
@@ -162,10 +259,13 @@ body .projects-grid {
   width: 100%;
   min-height: 100vh;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 1s ease-in-out;
 }
 
 body .projects-grid.visible {
   pointer-events: auto;
+  opacity: 1;
 }
 
 .logo-container {
