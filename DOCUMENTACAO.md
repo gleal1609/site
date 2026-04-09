@@ -71,7 +71,10 @@ site/
 │   ├── projects-grid.html   # Grid da home + lógica de hover em vídeo
 │   └── bottom-nav.html      # Barra inferior fixa (links internos e redes)
 ├── _projects/               # Um arquivo .md por projeto (coleção Jekyll)
-├── admin/                   # Painel CMS (index.html + config.yml) → copiado para _site/admin/
+├── admin/                   # Visual Portfolio CMS (SPA customizada) → copiado para _site/admin/
+│   ├── index.html           # SPA principal (Alpine.js + Packery + GitHub API)
+│   ├── config.yml           # Referência / fallback Sveltia CMS
+│   └── assets/              # CSS (tema escuro) e JS (auth, API, grid, editor)
 ├── assets/
 │   ├── css/                 # main.css, bottom-nav.css
 │   ├── js/                  # intro, transições, masonry (Packery), página de projetos, nav
@@ -149,50 +152,82 @@ Arquivo Jekyll com `layout: null` e `permalink: /projects.json`. Gera um **array
 
 ## 3. CMS e painel administrativo (`/admin/`)
 
-A **masonry da home** e a **ordem/tamanho** dos cartões vêm dos campos no front matter em `_projects/`. O painel em **`/admin/`** usa **Sveltia CMS** (primário), com o mesmo formato de `admin/config.yml` que o **Decap CMS** (alternativa). O backend é **GitHub** direto (sem Git Gateway nem Netlify Identity). Em produção na **Netlify**, o login usa **GitHub OAuth** via **proxy OAuth da Netlify** (`https://api.netlify.com/auth/done`). O repositório configurado é **`reversofilmes/site`**; a branch de trabalho do CMS é **`temp`**.
+O painel em **`/admin/`** é um **Visual Portfolio CMS** customizado — uma SPA (single-page application) que simula o grid masonry da home e permite **arrastar para reordenar**, **clicar para editar** todos os campos e **criar/excluir** projetos. O backend é **GitHub** direto (sem Git Gateway nem Netlify Identity). Em produção na **Netlify**, o login usa **GitHub OAuth** via **proxy OAuth da Netlify** (`https://api.netlify.com/auth/done`). O repositório configurado é **`gleal1609/site`** (ajustar em `admin/assets/js/admin-app.js` → `ADMIN_CONFIG.repo`); a branch de trabalho é **`temp`**.
+
+**Stack do painel (zero build step, CDN):**
+- **Packery 2.1.2** + **Draggabilly 3.0.0** — grid masonry com drag-and-drop
+- **Alpine.js 3.14.9** — reatividade para formulários e estado
+- **EasyMDE 2.18.0** — editor Markdown para o campo `body`
+- **js-yaml 4.1.0** — parse/serialização de front matter YAML
+- **GitHub REST API** — leitura/escrita de arquivos, commits atômicos multi-arquivo
+
+**Estrutura de arquivos do painel:**
+```
+admin/
+  index.html                   ← SPA principal
+  config.yml                   ← referência / fallback Sveltia
+  assets/
+    css/admin.css              ← tema escuro, layout, componentes
+    js/
+      github-auth.js           ← OAuth popup + PAT fallback
+      github-api.js            ← wrapper GitHub API + FrontMatter helpers
+      media-upload.js           ← validação e upload de mídia
+      grid-manager.js          ← Packery + Draggabilly, lógica de reorder
+      admin-app.js             ← orquestrador Alpine.js (editor, CRUD, estado)
+```
+
+**Funcionalidades principais:**
+- **Grid visual** com thumbnails reais e tamanhos (`home_size`: 1x1, 1x2, 2x1, 2x2)
+- **Dois modos**: "Home" (só `show_on_home: true`, masonry) e "Todos" (grid uniforme)
+- **Drag-and-drop**: arrastar cards para reordenar; a posição define `order` automaticamente
+- **Editor lateral**: todos os campos do front matter, upload de mídia, editor Markdown
+- **Commits atômicos**: reordenação salva todos os `.md` alterados em um único commit (Git Data API)
+- **Criar / Excluir** projetos direto pelo painel
 
 ### 3.1 Site estático e Git
 
-O Jekyll gera HTML estático. O CMS grava **commits** no repositório (Markdown em `_projects/` e arquivos em `assets/img/projects/` e `assets/video/projects/`). O Netlify **rebuilda** no push. Não há banco de dados no site.
+O Jekyll gera HTML estático. O painel grava **commits** no repositório via GitHub API (Markdown em `_projects/` e arquivos em `assets/img/projects/` e `assets/video/projects/`). O Netlify **rebuilda** no push. Não há banco de dados no site.
 
 ### 3.2 Produção: OAuth GitHub + Netlify
 
 1. **GitHub:** criar um **OAuth App** (organização ou conta da equipe) com **Callback URL** `https://api.netlify.com/auth/done` e **Homepage URL** do site (ex.: staging `https://temp.reversofilmes.com.br`).
 2. **Netlify:** Site settings → Access & security → OAuth → instalar o provedor **GitHub** com o **Client ID** e **Client Secret** do OAuth App. O **secret** fica só no painel Netlify, nunca no repositório.
-3. **No `admin/config.yml`:** não incluir `client_id`, `base_url` nem `auth_endpoint` — no deploy Netlify o Sveltia detecta o domínio e usa o proxy.
+3. O painel detecta o hostname Netlify e usa o proxy OAuth automaticamente.
 
 **Quem publica:** cada pessoa precisa de **conta GitHub própria** (recomenda-se **2FA**) e ser **colaboradora** do repositório com permissão de escrita. Evite uma única conta compartilhada com senha repassada.
 
 ### 3.3 Desenvolvimento e demos: token (PAT)
 
-Quando o OAuth via Netlify não for prático (ex.: `localhost`), o Sveltia permite autenticação com **Personal Access Token** no fluxo de login por token (conforme documentação do backend GitHub). Gere o token no GitHub com escopo mínimo para o repositório, use **apenas em ambiente local**, **não commite** o token e **revogue** após testes.
+Quando o OAuth via Netlify não for prático (ex.: `localhost`), o painel oferece login por **Personal Access Token** (link "Usar token pessoal" na tela de login). Gere o token no GitHub com escopo `repo`, use **apenas em ambiente local**, **não commite** o token e **revogue** após testes.
 
 Para demonstração ao cliente, prefira uma **URL de staging na Netlify** (mesmo fluxo OAuth que produção).
 
 ### 3.4 Branch protection (GitHub — configurar manualmente)
 
 - **`main`:** exigir PR antes do merge; bloquear force push e deleção da branch (ajuste conforme política da equipe).
-- **`temp`:** branch usada pelo CMS com **commit direto** — **não** exigir PR aqui (bloquearia o fluxo), salvo uso de *editorial workflow* no CMS. Bloquear force push e deleção da branch.
+- **`temp`:** branch usada pelo painel com **commit direto** — **não** exigir PR aqui (bloquearia o fluxo). Bloquear force push e deleção da branch.
 
 ### 3.5 Validação de mídia (GitHub Actions)
 
-O workflow **`.github/workflows/validate-uploads.yml`** roda em pushes/PRs que alteram `assets/img/projects/` ou `assets/video/projects/`: permite imagens `.jpg`, `.jpeg`, `.png`, `.webp`; vídeos `.mp4` e `.webm`; tamanho máximo **25MB** por arquivo. Um push pode acionar em paralelo o deploy Netlify e este job — o job **alerta** com check vermelho; **não** bloqueia o deploy por si só (para gating forte seria necessário ex.: PR + required checks ou deploy condicionado).
+O workflow **`.github/workflows/validate-uploads.yml`** roda em pushes/PRs que alteram `assets/img/projects/` ou `assets/video/projects/`: permite imagens `.jpg`, `.jpeg`, `.png`, `.webp`; vídeos `.mp4` e `.webm`; tamanho máximo **25MB** por arquivo. O painel também faz validação client-side antes do upload (mesmos tipos e limite de 25MB).
 
 ### 3.6 Segurança e superfície
 
 - **`/admin/`** é URL pública; a proteção é o **login GitHub**.
 - Ameaças comuns: phishing e sequestro de sessão — treinar quem usa o painel.
-- **CDN:** o `admin/index.html` pinna a versão do Sveltia (`@sveltia/cms@0.152.0`) para reduzir risco de supply chain.
+- **CDN:** o `admin/index.html` pina versões fixas de todas as libs (Packery, Alpine, etc.) para reduzir risco de supply chain.
+- Token armazenado em `localStorage` (chave `reverso_admin_token`).
 
-### 3.7 Limitações e fallback Sveltia → Decap
+### 3.7 Limitações e fallback Sveltia
 
 - **Upload:** limite ~**25MB** por arquivo na API do GitHub; vídeos de hover devem ser curtos e otimizados.
-- **Slug de arquivo:** novos projetos pelo CMS seguem o padrão configurado em `slug` no `config.yml`; pode divergir da convenção manual `YYMMDD-Nome-Cliente.md` — renomear no Git se precisar alinhar.
-- **Fallback Decap:** trocar o script em `admin/index.html` para o CDN do Decap e ajustar `admin/config.yml`: **`media_libraries`** (Sveltia) → **`media_library`** (Decap, estrutura diferente). Não é apenas uma linha.
+- **Slug de arquivo:** novos projetos seguem o padrão `MMDDYYYY-Titulo-Cliente.md`.
+- **Fallback Sveltia:** substituir o conteúdo de `admin/index.html` pelo script Sveltia (instrução no comentário HTML do arquivo). O `config.yml` permanece compatível.
+- **Edição concorrente:** se dois usuários editam ao mesmo tempo, o commit atômico falha ao detectar que a ref mudou — o painel pede reload.
 
 ### 3.8 O que o painel cobre
 
-Coleção **projects** (`_projects/`), thumbnails em **`/assets/img/projects`**, vídeo de hover em **`/assets/video/projects`**, campos alinhados ao front matter atual (incluindo corpo Markdown). Layouts, CSS, JS e `_config.yml` continuam no Git pela equipe técnica.
+Coleção **projects** (`_projects/`), thumbnails em **`/assets/img/projects`**, vídeo de hover em **`/assets/video/projects`**, campos alinhados ao front matter atual (incluindo corpo Markdown), **reordenação visual** da home e portfólio. Layouts, CSS, JS e `_config.yml` continuam no Git pela equipe técnica.
 
 ---
 
