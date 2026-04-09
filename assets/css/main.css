@@ -253,20 +253,7 @@ html {
   }
 }
 
-/* Body layout for home page with projects grid */
-body .projects-grid {
-  position: relative;
-  width: 100%;
-  min-height: 100vh;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 1s ease-in-out;
-}
-
-body .projects-grid.visible {
-  pointer-events: auto;
-  opacity: 1;
-}
+/* projects-grid: hidden until intro reveals it (.visible added by JS) */
 
 .logo-container {
   flex: 1;
@@ -520,27 +507,14 @@ a:hover::after {
   border-color: rgba(255, 0, 0, 0.3);
 }
 
-@keyframes fadeInItem {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
 .project-item:focus {
   outline: 3px solid #ff0000;
   outline-offset: -3px;
   z-index: 10;
 }
 
-.project-item:hover,
-.project-item:focus {
-  transform: scale(1.02);
-  z-index: 5;
+.project-item::after {
+  content: none;
 }
 
 .project-thumbnail-container {
@@ -686,7 +660,7 @@ a:hover::after {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, background-color 0.3s ease, border-color 0.3s ease;
   -webkit-tap-highlight-color: rgba(255, 0, 0, 0.2);
   touch-action: manipulation;
   min-height: 44px; /* Touch target size */
@@ -918,7 +892,7 @@ a:hover::after {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, background-color 0.3s ease;
 }
 
 .clear-filters-btn:hover:not(:disabled) {
@@ -958,7 +932,11 @@ a:hover::after {
   overflow: hidden;
   text-decoration: none;
   color: inherit;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.project-card-simple::after {
+  content: none;
 }
 
 .project-card-simple:hover,
@@ -1063,8 +1041,11 @@ a:hover::after {
   overflow: hidden;
   text-decoration: none;
   color: inherit;
-  transition: all 0.3s ease;
-  animation: fadeInItem 0.5s ease forwards;
+  transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.project-card::after {
+  content: none;
 }
 
 .project-card:hover,
@@ -1365,7 +1346,7 @@ a:hover::after {
   text-decoration: none;
   border: 1px solid rgba(255, 0, 0, 0.3);
   border-radius: 4px;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, color 0.3s ease, border-color 0.3s ease, background-color 0.3s ease;
   cursor: pointer;
 }
 
@@ -1512,7 +1493,7 @@ a:hover::after {
   font-family: 'Montserrat', sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, color 0.3s ease, border-color 0.3s ease, background-color 0.3s ease;
   padding: 0.75rem 1.5rem;
   border: 1px solid rgba(255, 0, 0, 0.3);
   border-radius: 4px;
@@ -1566,7 +1547,7 @@ a:hover::after {
 }
 
 /* Firefox */
-* {
+html {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 0, 0, 0.4) #000;
 }
@@ -1730,7 +1711,7 @@ a:hover::after {
   background-color: rgba(255, 0, 0, 0.05);
   border: 2px solid rgba(255, 0, 0, 0.2);
   border-radius: 8px;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, border-color 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .processo-item:hover {
@@ -1799,7 +1780,7 @@ a:hover::after {
   font-family: 'Poppins', sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   text-decoration: none;
   color: #ff0000;
 }

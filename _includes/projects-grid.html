@@ -45,163 +45,87 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-  const projectItems = document.querySelectorAll(".project-item");
+  const items = document.querySelectorAll(".project-item");
+  var videoMap = new Map();
 
-  projectItems.forEach((item) => {
-    const video = item.querySelector(".project-hover-video");
-    const thumbnail = item.querySelector(".project-thumbnail");
+  items.forEach((item) => {
+    var videoEl = item.querySelector(".project-hover-video");
+    if (!videoEl) return;
 
-    if (!video) return;
+    var thumbEl = item.querySelector(".project-thumbnail");
+    var state = { loaded: false, loading: false };
+    videoMap.set(item, { videoEl: videoEl, thumbEl: thumbEl, state: state });
 
-    (function(videoEl, thumbEl, itemEl) {
-      let isLoaded = false;
-      let isLoading = false;
-      let canPlayHandler = null;
-      let errorHandler = null;
-
-      const cleanup = () => {
-        if (canPlayHandler) {
-          videoEl.removeEventListener("canplay", canPlayHandler);
-          canPlayHandler = null;
-        }
-        if (errorHandler) {
-          videoEl.removeEventListener("error", errorHandler);
-          errorHandler = null;
-        }
-      };
-
-      const loadVideo = () => {
-        if (isLoaded || isLoading) return;
-
-        const sourceEl = videoEl.querySelector("source");
-        const hasSource = sourceEl && sourceEl.src;
-        const hasCurrentSrc = videoEl.currentSrc;
-
-        if (!hasSource && !hasCurrentSrc) return;
-
-        isLoading = true;
-
-        if (videoEl.readyState >= 2) {
-          isLoaded = true;
-          isLoading = false;
-          videoEl.setAttribute("data-ready", "true");
-          return;
-        }
-
-        canPlayHandler = () => {
-          isLoaded = true;
-          isLoading = false;
-          videoEl.setAttribute("data-ready", "true");
-          cleanup();
-        };
-
-        errorHandler = () => {
-          isLoading = false;
-          cleanup();
-        };
-
-        videoEl.addEventListener("canplay", canPlayHandler, { once: true });
-        videoEl.addEventListener("error", errorHandler, { once: true });
-
-        try {
-          videoEl.load();
-          setTimeout(() => {
-            if (videoEl.networkState === 3) isLoading = false;
-          }, 500);
-        } catch (e) {
-          isLoading = false;
-          cleanup();
-        }
-      };
-
-      const playVideo = () => {
-        if (!isLoaded && !isLoading) loadVideo();
-
-        if (!isLoaded) {
-          const waitForReady = () => {
-            if (videoEl.readyState >= 2 || isLoaded) {
-              tryPlay();
-            } else {
-              const readyHandler = () => {
-                videoEl.removeEventListener("canplay", readyHandler);
-                tryPlay();
-              };
-              videoEl.addEventListener("canplay", readyHandler, { once: true });
-              setTimeout(() => {
-                if (!isLoaded) {
-                  videoEl.removeEventListener("canplay", readyHandler);
-                  if (thumbEl) thumbEl.style.opacity = "1";
-                }
-              }, 2000);
-            }
-          };
-          waitForReady();
-        } else {
-          tryPlay();
-        }
-
-        function tryPlay() {
-          const playPromise = videoEl.play();
-          if (playPromise !== undefined) {
-            playPromise
-              .then(() => {
-                videoEl.style.opacity = "1";
-                videoEl.classList.add("playing");
-                if (thumbEl) thumbEl.style.opacity = "0";
-              })
-              .catch(() => {
-                setTimeout(() => {
-                  videoEl
-                    .play()
-                    .then(() => {
-                      videoEl.style.opacity = "1";
-                      videoEl.classList.add("playing");
-                      if (thumbEl) thumbEl.style.opacity = "0";
-                    })
-                    .catch(() => {
-                      if (thumbEl) thumbEl.style.opacity = "1";
-                    });
-                }, 200);
-              });
-          }
-        }
-      };
-
-      const hideVideo = () => {
-        videoEl.pause();
-        videoEl.currentTime = 0;
-        videoEl.style.opacity = "0";
-        videoEl.classList.remove("playing");
-        if (thumbEl) thumbEl.style.opacity = "1";
-      };
-
-      itemEl.addEventListener("mouseenter", playVideo);
-      itemEl.addEventListener("mouseleave", hideVideo);
-      itemEl.addEventListener("focus", playVideo);
-      itemEl.addEventListener("blur", hideVideo);
-
-      const observer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              loadVideo();
-              observer.unobserve(itemEl);
-            }
-          });
-        },
-        { rootMargin: "200px" }
-      );
-
-      observer.observe(itemEl);
-
-      itemEl.addEventListener(
-        "touchstart",
-        () => {
-          loadVideo();
-        },
-        { once: true, passive: true }
-      );
-    })(video, thumbnail, item);
+    item.addEventListener("mouseenter", () => playVideo(videoEl, thumbEl, state));
+    item.addEventListener("mouseleave", () => hideVideo(videoEl, thumbEl));
+    item.addEventListener("focus", () => playVideo(videoEl, thumbEl, state));
+    item.addEventListener("blur", () => hideVideo(videoEl, thumbEl));
+    item.addEventListener("touchstart", () => loadVideo(videoEl, state), { once: true, passive: true });
   });
+
+  var observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      var data = videoMap.get(entry.target);
+      if (data) {
+        loadVideo(data.videoEl, data.state);
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: "200px" });
+
+  videoMap.forEach((_data, item) => observer.observe(item));
+
+  function loadVideo(videoEl, state) {
+    if (state.loaded || state.loading) return;
+    var sourceEl = videoEl.querySelector("source");
+    if (!(sourceEl && sourceEl.src) && !videoEl.currentSrc) return;
+    state.loading = true;
+
+    if (videoEl.readyState >= 2) {
+      state.loaded = true;
+      state.loading = false;
+      return;
+    }
+
+    videoEl.addEventListener("canplay", () => {
+      state.loaded = true;
+      state.loading = false;
+    }, { once: true });
+    videoEl.addEventListener("error", () => { state.loading = false; }, { once: true });
+
+    try { videoEl.load(); } catch (_) { state.loading = false; }
+  }
+
+  function playVideo(videoEl, thumbEl, state) {
+    if (!state.loaded && !state.loading) loadVideo(videoEl, state);
+
+    if (videoEl.readyState < 2 && !state.loaded) {
+      videoEl.addEventListener("canplay", () => tryPlay(videoEl, thumbEl), { once: true });
+      return;
+    }
+    tryPlay(videoEl, thumbEl);
+  }
+
+  function tryPlay(videoEl, thumbEl) {
+    var p = videoEl.play();
+    if (p !== undefined) {
+      p.then(() => {
+        videoEl.style.opacity = "1";
+        videoEl.classList.add("playing");
+        if (thumbEl) thumbEl.style.opacity = "0";
+      }).catch(() => {
+        if (thumbEl) thumbEl.style.opacity = "1";
+      });
+    }
+  }
+
+  function hideVideo(videoEl, thumbEl) {
+    videoEl.pause();
+    videoEl.currentTime = 0;
+    videoEl.style.opacity = "0";
+    videoEl.classList.remove("playing");
+    if (thumbEl) thumbEl.style.opacity = "1";
+  }
 });
 </script>

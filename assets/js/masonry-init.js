@@ -136,7 +136,7 @@ function initMasonry() {
     window.addEventListener('resize', handleResize);
   };
 
-  requestAnimationFrame(() => requestAnimationFrame(runInit));
+  requestAnimationFrame(runInit);
 }
 
 function handleResize() {
@@ -186,7 +186,7 @@ function handleResize() {
 
 function loadPackery() {
   const script = document.createElement('script');
-  script.src = 'https://cdn.jsdelivr.net/npm/packery@2/dist/packery.pkgd.min.js';
+  script.src = 'https://cdn.jsdelivr.net/npm/packery@2.1.2/dist/packery.pkgd.min.js';
   script.onload = () => {
     console.log('Packery loaded, initializing...');
     initMasonry();

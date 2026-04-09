@@ -16,7 +16,8 @@ layout: none
 
   <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
   <link rel="stylesheet" href="{{ '/assets/css/bottom-nav.css' | relative_url }}">
-  <link rel="preload" href="https://cdn.jsdelivr.net/npm/packery@2/dist/packery.pkgd.min.js" as="script" crossorigin>
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" as="script" crossorigin>
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/packery@2.1.2/dist/packery.pkgd.min.js" as="script" crossorigin>
 </head>
 <body>
   <div class="intro-text-container" id="intro-text">
@@ -36,8 +37,8 @@ layout: none
   {% include bottom-nav.html %}
   
   <!-- GSAP + Packery (load early so layout runs right after intro; avoids late network fetch) -->
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/packery@2/dist/packery.pkgd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/packery@2.1.2/dist/packery.pkgd.min.js" crossorigin="anonymous"></script>
   <script src="{{ '/assets/js/page-transitions.js' | relative_url }}"></script>
   <script src="{{ '/assets/js/home-intro.js' | relative_url }}"></script>
   <script src="{{ '/assets/js/masonry-init.js' | relative_url }}"></script>

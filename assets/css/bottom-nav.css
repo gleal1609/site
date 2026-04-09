@@ -7,13 +7,15 @@
   z-index: 2000;
   background-color: rgba(0, 0, 0, 0.95);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-top: 1px solid rgba(255, 0, 0, 0.3);
   padding: 1rem 0;
   pointer-events: none;
-  /* Ensure menu always stays visible during page transitions */
   opacity: 1 !important;
   visibility: visible !important;
   display: block !important;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .bottom-nav-container {
@@ -36,18 +38,17 @@
   gap: 0.5rem;
   text-decoration: none;
   color: #ff0000;
-  transition: all 0.3s ease;
+  transition: color 0.3s ease;
   position: relative;
   padding: 0.5rem;
   overflow: visible;
-  /* Prevent text selection on desktop too */
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Center icon is bigger - styles applied to child elements */
+.bottom-nav-item::after {
+  content: none;
+}
+
 .bottom-nav-item-center .bottom-nav-icon {
   width: 60px;
   height: 60px;
@@ -68,7 +69,6 @@
   transition: transform 0.3s ease;
 }
 
-/* Ensure icon glyphs use Font Awesome (body font must not override ::before) */
 .bottom-nav-icon .fa-solid {
   font-family: "Font Awesome 6 Free", sans-serif;
   font-weight: 900;
@@ -93,8 +93,6 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 0.3s ease, transform 0.3s ease;
   white-space: nowrap;
   position: absolute;
   top: -35px;
@@ -106,6 +104,7 @@
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .bottom-nav-item:hover .bottom-nav-label,
@@ -125,78 +124,43 @@
   color: #ff3333;
 }
 
-/* Mobile: App-style navigation */
+/* Mobile */
 @media (max-width: 768px) {
   .bottom-nav {
     padding: 1rem 0;
-    /* Prevent text selection on entire nav */
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    -webkit-touch-callout: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
-  
+
   .bottom-nav-container {
     gap: 0.75rem;
     padding: 0 0.5rem;
     justify-content: space-around;
-    /* Prevent text selection */
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
   }
-  
+
   .bottom-nav-icon {
     width: 45px;
     height: 45px;
     font-size: 1.5rem;
   }
-  
+
   .bottom-nav-label {
     display: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
   }
-  
+
   .bottom-nav-item {
     gap: 0.25rem;
     padding: 0.25rem;
     flex: 1;
     min-width: 0;
-    /* Prevent text selection and tap highlight */
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    -webkit-touch-callout: none;
   }
-  
-  .bottom-nav-item * {
-    /* Prevent text selection on all child elements */
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    -webkit-touch-callout: none;
-  }
-  
-  .bottom-nav-icon {
-    /* Prevent tap highlight on icons */
-    -webkit-tap-highlight-color: transparent;
-    -webkit-touch-callout: none;
-  }
-  
+
   .bottom-nav-item-center .bottom-nav-icon {
     width: 50px;
     height: 50px;
     font-size: 1.75rem;
   }
-  
+
   .bottom-nav-item-center .bottom-nav-logo {
     max-height: 50px;
   }
@@ -206,36 +170,29 @@
   .bottom-nav {
     padding: 0.875rem 0;
   }
-  
+
   .bottom-nav-container {
     gap: 0.5rem;
     padding: 0 0.25rem;
   }
-  
+
   .bottom-nav-icon {
     width: 40px;
     height: 40px;
     font-size: 1.25rem;
   }
-  
-  .bottom-nav-label {
-    display: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-  }
-  
+
   .bottom-nav-item-center .bottom-nav-icon {
     width: 45px;
     height: 45px;
     font-size: 1.5rem;
   }
-  
+
   .bottom-nav-item-center .bottom-nav-logo {
     max-height: 45px;
   }
 }
 
-/* Ensure bottom nav doesn't overlap content */
 body {
   padding-bottom: 100px;
 }
