@@ -1,30 +1,25 @@
 /**
- * GitHub Authentication — Netlify OAuth proxy + PAT fallback
+ * GitHub Authentication — Netlify OAuth proxy + PAT fallback.
+ * Token lives ONLY in memory (never persisted to localStorage/sessionStorage).
+ * Closing or reloading the tab destroys the token — login is required every time.
  */
 class GitHubAuth {
   constructor() {
-    this.TOKEN_KEY = 'reverso_admin_token';
-    this.TYPE_KEY = 'reverso_admin_auth_type';
     this._token = null;
-    this._type = null;
   }
 
+  /** Always returns false — no persisted token to restore. */
   init() {
-    this._token = localStorage.getItem(this.TOKEN_KEY);
-    this._type = localStorage.getItem(this.TYPE_KEY);
-    return !!this._token;
+    this._clearLegacy();
+    return false;
   }
 
   get token() { return this._token; }
   get isAuthenticated() { return !!this._token; }
-  get isLocal() {
-    const h = window.location.hostname;
-    return h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.');
-  }
 
   loginWithOAuth() {
     const siteId = window.location.hostname;
-    const url = `https://api.netlify.com/auth?provider=github&site_id=${siteId}`;
+    const url = `https://api.netlify.com/auth?provider=github&site_id=${siteId}&scope=repo`;
 
     return new Promise((resolve, reject) => {
       const popup = window.open(url, 'github-auth', 'width=600,height=700,scrollbars=yes');
@@ -35,14 +30,11 @@ class GitHubAuth {
       const onMessage = (e) => {
         if (!e.data || typeof e.data !== 'string') return;
 
-        // Step 1 of handshake: popup announces it's authorizing.
-        // We must reply so it proceeds to send the token.
         if (e.data === 'authorizing:github') {
           e.source.postMessage(e.data, e.origin);
           return;
         }
 
-        // Step 2: popup sends the actual token (or error).
         const match = e.data.match(
           /^authorization:github:(success|error):(.+)$/,
         );
@@ -52,7 +44,7 @@ class GitHubAuth {
         if (match[1] === 'success') {
           try {
             const { token } = JSON.parse(match[2]);
-            this._save(token, 'oauth');
+            this._token = token;
             resolve(token);
           } catch { reject(new Error('Resposta de auth inválida')); }
         } else {
@@ -88,21 +80,20 @@ class GitHubAuth {
   loginWithPAT(token) {
     const t = (token || '').trim();
     if (!t) throw new Error('Token vazio');
-    this._save(t, 'pat');
+    this._token = t;
     return t;
   }
 
   logout() {
     this._token = null;
-    this._type = null;
-    localStorage.removeItem(this.TOKEN_KEY);
-    localStorage.removeItem(this.TYPE_KEY);
+    this._clearLegacy();
   }
 
-  _save(token, type) {
-    this._token = token;
-    this._type = type;
-    localStorage.setItem(this.TOKEN_KEY, token);
-    localStorage.setItem(this.TYPE_KEY, type);
+  /** Remove tokens left by previous versions that used localStorage. */
+  _clearLegacy() {
+    try {
+      localStorage.removeItem('reverso_admin_token');
+      localStorage.removeItem('reverso_admin_auth_type');
+    } catch { /* ignore in contexts where localStorage is blocked */ }
   }
 }

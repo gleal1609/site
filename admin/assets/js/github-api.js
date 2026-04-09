@@ -12,6 +12,7 @@ class GitHubAPI {
 
   async _req(path, opts = {}) {
     const url = path.startsWith('http') ? path : `${this.base}${path}`;
+    const method = opts.method || 'GET';
     const res = await fetch(url, {
       ...opts,
       headers: {
@@ -23,7 +24,15 @@ class GitHubAPI {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.message || `GitHub ${res.status}`);
+      const msg = body.message || `GitHub ${res.status}`;
+      console.error(`[GitHubAPI] ${method} ${path} → ${res.status}: ${msg}`);
+      if (res.status === 404 && method !== 'GET') {
+        throw new Error(
+          `${msg} — verifique se o token tem permissão de escrita (scope "repo"). ` +
+          `Faça logout e login novamente.`,
+        );
+      }
+      throw new Error(msg);
     }
     if (res.status === 204) return null;
     return res.json();

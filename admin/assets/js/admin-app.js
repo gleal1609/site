@@ -44,11 +44,8 @@ function adminApp() {
     /* ---- lifecycle ---- */
 
     async init() {
-      if (this._auth.init()) {
-        await this._boot();
-      } else {
-        this.loading = false;
-      }
+      this._auth.init();
+      this.loading = false;
     },
 
     async _boot() {
