@@ -95,6 +95,12 @@ layout: none
           </div>
         </section>
       {% endif %}
+
+      {% if content != "" %}
+        <section class="project-body-section project-markdown-body">
+          {{ content }}
+        </section>
+      {% endif %}
     </main>
   </div>
   

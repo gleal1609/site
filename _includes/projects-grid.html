@@ -18,7 +18,12 @@
             preload="metadata"
             poster="{{ project.thumbnail | relative_url }}"
             webkit-playsinline="true">
-            <source src="{{ project.hover_preview | relative_url }}" type="video/mp4">
+            {% assign _hp = project.hover_preview | downcase %}
+            {% if _hp contains '.webm' %}
+              <source src="{{ project.hover_preview | relative_url }}" type="video/webm">
+            {% else %}
+              <source src="{{ project.hover_preview | relative_url }}" type="video/mp4">
+            {% endif %}
           </video>
         {% endif %}
         <img 
@@ -40,42 +45,21 @@
 </div>
 
 <script>
-// Video hover functionality is preserved below
 document.addEventListener("DOMContentLoaded", () => {
   const projectItems = document.querySelectorAll(".project-item");
-  
-  // Hover video functionality - each video handled independently
-  console.log('=== Initializing video hover functionality ===');
-  console.log('Total project items:', projectItems.length);
-  
-  projectItems.forEach((item, index) => {
+
+  projectItems.forEach((item) => {
     const video = item.querySelector(".project-hover-video");
     const thumbnail = item.querySelector(".project-thumbnail");
-    const projectTitle = item.getAttribute("data-project-title") || `Project ${index + 1}`;
-    
-    if (!video) {
-      console.log(`[${projectTitle}] No video element found`);
-      return;
-    }
-    
-    const sourceElement = video.querySelector('source');
-    const videoSrc = sourceElement?.src || video.src || video.currentSrc;
-    console.log(`[${projectTitle}] Video found`);
-    console.log(`[${projectTitle}] Source element:`, sourceElement);
-    console.log(`[${projectTitle}] Source src:`, sourceElement?.src);
-    console.log(`[${projectTitle}] Video src:`, video.src);
-    console.log(`[${projectTitle}] Video currentSrc:`, video.currentSrc);
-    console.log(`[${projectTitle}] Initial readyState:`, video.readyState);
-    console.log(`[${projectTitle}] Video networkState:`, video.networkState);
-    
-    // Create isolated state for each video using a closure
-    (function(videoEl, thumbEl, itemEl, title) {
+
+    if (!video) return;
+
+    (function(videoEl, thumbEl, itemEl) {
       let isLoaded = false;
       let isLoading = false;
       let canPlayHandler = null;
       let errorHandler = null;
-      
-      // Clean up function
+
       const cleanup = () => {
         if (canPlayHandler) {
           videoEl.removeEventListener("canplay", canPlayHandler);
@@ -86,289 +70,139 @@ document.addEventListener("DOMContentLoaded", () => {
           errorHandler = null;
         }
       };
-      
-      // Load video function
+
       const loadVideo = () => {
-        console.log(`[${title}] loadVideo() called - isLoaded: ${isLoaded}, isLoading: ${isLoading}, readyState: ${videoEl.readyState}`);
-        console.log(`[${title}] Video currentSrc:`, videoEl.currentSrc || 'empty');
-        console.log(`[${title}] Video networkState:`, videoEl.networkState);
-        
-        if (isLoaded || isLoading) {
-          console.log(`[${title}] loadVideo() skipped - already loaded or loading`);
-          return;
-        }
-        
-        // Check if video has a valid source
-        const sourceEl = videoEl.querySelector('source');
+        if (isLoaded || isLoading) return;
+
+        const sourceEl = videoEl.querySelector("source");
         const hasSource = sourceEl && sourceEl.src;
         const hasCurrentSrc = videoEl.currentSrc;
-        
-        if (!hasSource && !hasCurrentSrc) {
-          console.error(`[${title}] ❌ No video source found!`);
-          console.error(`[${title}] Source element:`, sourceEl);
-          console.error(`[${title}] Source src:`, sourceEl?.src);
-          return;
-        }
-        
+
+        if (!hasSource && !hasCurrentSrc) return;
+
         isLoading = true;
-        console.log(`[${title}] Starting video load...`);
-        
-        // Check if video already has data
+
         if (videoEl.readyState >= 2) {
           isLoaded = true;
           isLoading = false;
           videoEl.setAttribute("data-ready", "true");
-          console.log(`[${title}] Video already has data (readyState: ${videoEl.readyState})`);
           return;
         }
-        
-        // Set up event handlers
+
         canPlayHandler = () => {
           isLoaded = true;
           isLoading = false;
           videoEl.setAttribute("data-ready", "true");
-          console.log(`[${title}] ✅ Video can play! readyState: ${videoEl.readyState}, duration: ${videoEl.duration}s`);
           cleanup();
         };
-        
-        errorHandler = (e) => {
+
+        errorHandler = () => {
           isLoading = false;
-          console.error(`[${title}] ❌ Video failed to load`);
-          console.error(`[${title}] Video src:`, videoEl.src);
-          console.error(`[${title}] Video currentSrc:`, videoEl.currentSrc);
-          console.error(`[${title}] Network state:`, videoEl.networkState);
-          console.error(`[${title}] Ready state:`, videoEl.readyState);
-          if (videoEl.error) {
-            console.error(`[${title}] Video error code:`, videoEl.error.code);
-            console.error(`[${title}] Video error message:`, videoEl.error.message);
-            // Error codes: 1=MEDIA_ERR_ABORTED, 2=MEDIA_ERR_NETWORK, 3=MEDIA_ERR_DECODE, 4=MEDIA_ERR_SRC_NOT_SUPPORTED
-            const errorMessages = {
-              1: 'MEDIA_ERR_ABORTED - The user aborted the loading',
-              2: 'MEDIA_ERR_NETWORK - A network error occurred',
-              3: 'MEDIA_ERR_DECODE - The video could not be decoded',
-              4: 'MEDIA_ERR_SRC_NOT_SUPPORTED - The video source is not supported'
-            };
-            console.error(`[${title}] Error meaning:`, errorMessages[videoEl.error.code] || 'Unknown error');
-          }
-          console.error(`[${title}] Error event:`, e);
           cleanup();
         };
-        
-        // Add additional event listeners for debugging
-        videoEl.addEventListener("loadstart", () => {
-          console.log(`[${title}] 📥 loadstart event - readyState: ${videoEl.readyState}, networkState: ${videoEl.networkState}`);
-          console.log(`[${title}] currentSrc:`, videoEl.currentSrc);
-        }, { once: true });
-        
-        videoEl.addEventListener("progress", () => {
-          console.log(`[${title}] 📈 progress - readyState: ${videoEl.readyState}, buffered: ${videoEl.buffered.length} ranges`);
-        });
-        
-        videoEl.addEventListener("loadedmetadata", () => {
-          console.log(`[${title}] 📊 loadedmetadata - readyState: ${videoEl.readyState}, duration: ${videoEl.duration}s`);
-          console.log(`[${title}] currentSrc:`, videoEl.currentSrc);
-        }, { once: true });
-        
-        videoEl.addEventListener("loadeddata", () => {
-          console.log(`[${title}] 📦 loadeddata - readyState: ${videoEl.readyState}`);
-        }, { once: true });
-        
-        videoEl.addEventListener("canplaythrough", () => {
-          console.log(`[${title}] 🎯 canplaythrough - readyState: ${videoEl.readyState}`);
-        }, { once: true });
-        
+
         videoEl.addEventListener("canplay", canPlayHandler, { once: true });
         videoEl.addEventListener("error", errorHandler, { once: true });
-        
-        // Force load
+
         try {
-          console.log(`[${title}] Calling video.load()...`);
-          console.log(`[${title}] Before load - networkState: ${videoEl.networkState}, readyState: ${videoEl.readyState}`);
-          console.log(`[${title}] Video src attribute:`, videoEl.getAttribute('src') || 'none');
-          console.log(`[${title}] Video currentSrc:`, videoEl.currentSrc || 'empty');
-          console.log(`[${title}] Source elements:`, Array.from(videoEl.querySelectorAll('source')).map(s => ({
-            src: s.src,
-            type: s.type,
-            hasSrc: !!s.src
-          })));
-          
-          // If using source tag, ensure it's properly set
-          if (sourceEl && !videoEl.currentSrc) {
-            console.log(`[${title}] Source element found but currentSrc is empty, checking source src...`);
-            if (sourceEl.src) {
-              console.log(`[${title}] Source has src:`, sourceEl.src);
-            } else {
-              console.error(`[${title}] ❌ Source element has no src!`);
-              console.error(`[${title}] Source element attributes:`, Array.from(sourceEl.attributes).map(a => `${a.name}="${a.value}"`));
-            }
-          }
-          
           videoEl.load();
-          console.log(`[${title}] video.load() called successfully`);
-          console.log(`[${title}] Immediately after load - networkState: ${videoEl.networkState}, readyState: ${videoEl.readyState}`);
-          
-          // Check if load actually started
           setTimeout(() => {
-            console.log(`[${title}] 500ms after load - networkState: ${videoEl.networkState}, readyState: ${videoEl.readyState}`);
-            console.log(`[${title}] currentSrc:`, videoEl.currentSrc || 'still empty');
-            if (videoEl.networkState === 3) { // NETWORK_NO_SOURCE
-              console.error(`[${title}] ❌ Network error: No source found!`);
-              console.error(`[${title}] Video src:`, videoEl.src);
-              console.error(`[${title}] Video currentSrc:`, videoEl.currentSrc);
-              console.error(`[${title}] Source elements:`, videoEl.querySelectorAll('source'));
-              isLoading = false;
-            } else if (videoEl.networkState === 2) { // NETWORK_LOADING
-              console.log(`[${title}] ✅ Video is loading (networkState: 2)`);
-            }
+            if (videoEl.networkState === 3) isLoading = false;
           }, 500);
-          
-          // Check again after 2 seconds
-          setTimeout(() => {
-            if (!isLoaded && isLoading) {
-              console.warn(`[${title}] ⏱️ Still loading after 2 seconds - networkState: ${videoEl.networkState}, readyState: ${videoEl.readyState}`);
-              console.warn(`[${title}] currentSrc:`, videoEl.currentSrc || 'still empty');
-              if (videoEl.error) {
-                console.error(`[${title}] Video error detected:`, videoEl.error);
-              }
-            }
-          }, 2000);
         } catch (e) {
-          console.error(`[${title}] ❌ Error calling video.load():`, e);
           isLoading = false;
           cleanup();
         }
       };
-      
-      // Play video function
+
       const playVideo = () => {
-        console.log(`[${title}] 🖱️ playVideo() called - isLoaded: ${isLoaded}, isLoading: ${isLoading}, readyState: ${videoEl.readyState}`);
-        
-        // Load if not already loaded
-        if (!isLoaded && !isLoading) {
-          console.log(`[${title}] Video not loaded, calling loadVideo()...`);
-          loadVideo();
-        }
-        
-        // Wait for video to be ready if needed
+        if (!isLoaded && !isLoading) loadVideo();
+
         if (!isLoaded) {
-          console.log(`[${title}] Waiting for video to be ready...`);
           const waitForReady = () => {
             if (videoEl.readyState >= 2 || isLoaded) {
-              console.log(`[${title}] Video ready, attempting to play...`);
               tryPlay();
             } else {
-              console.log(`[${title}] Video not ready yet (readyState: ${videoEl.readyState}), waiting for canplay event...`);
               const readyHandler = () => {
-                console.log(`[${title}] canplay event received, attempting to play...`);
                 videoEl.removeEventListener("canplay", readyHandler);
                 tryPlay();
               };
               videoEl.addEventListener("canplay", readyHandler, { once: true });
-              
-              // Timeout after 2 seconds
               setTimeout(() => {
                 if (!isLoaded) {
-                  console.warn(`[${title}] ⏱️ Timeout waiting for video to be ready`);
                   videoEl.removeEventListener("canplay", readyHandler);
                   if (thumbEl) thumbEl.style.opacity = "1";
                 }
               }, 2000);
             }
           };
-          
           waitForReady();
         } else {
-          console.log(`[${title}] Video already loaded, attempting to play immediately...`);
           tryPlay();
         }
-        
+
         function tryPlay() {
-          console.log(`[${title}] 🎬 tryPlay() - readyState: ${videoEl.readyState}, paused: ${videoEl.paused}, currentTime: ${videoEl.currentTime}`);
-          
           const playPromise = videoEl.play();
-          
           if (playPromise !== undefined) {
-            console.log(`[${title}] play() promise returned`);
             playPromise
               .then(() => {
-                console.log(`[${title}] ✅ Video playing successfully!`);
                 videoEl.style.opacity = "1";
                 videoEl.classList.add("playing");
                 if (thumbEl) thumbEl.style.opacity = "0";
               })
-              .catch((error) => {
-                console.error(`[${title}] ❌ First play() attempt failed:`, error);
-                console.error(`[${title}] Error details:`, error.message || error);
-                // Play failed, try once more after a brief delay
+              .catch(() => {
                 setTimeout(() => {
-                  console.log(`[${title}] Retrying play() after delay...`);
-                  videoEl.play()
+                  videoEl
+                    .play()
                     .then(() => {
-                      console.log(`[${title}] ✅ Video playing on retry!`);
                       videoEl.style.opacity = "1";
                       videoEl.classList.add("playing");
                       if (thumbEl) thumbEl.style.opacity = "0";
                     })
-                    .catch((retryError) => {
-                      console.error(`[${title}] ❌ Retry play() also failed:`, retryError);
-                      // Final fallback - show thumbnail
+                    .catch(() => {
                       if (thumbEl) thumbEl.style.opacity = "1";
                     });
                 }, 200);
               });
-          } else {
-            console.warn(`[${title}] ⚠️ play() returned undefined`);
           }
         }
       };
-      
-      // Hide video function
+
       const hideVideo = () => {
-        console.log(`[${title}] 🖱️ hideVideo() called`);
         videoEl.pause();
         videoEl.currentTime = 0;
         videoEl.style.opacity = "0";
         videoEl.classList.remove("playing");
         if (thumbEl) thumbEl.style.opacity = "1";
       };
-      
-      // Event listeners
+
       itemEl.addEventListener("mouseenter", playVideo);
       itemEl.addEventListener("mouseleave", hideVideo);
       itemEl.addEventListener("focus", playVideo);
       itemEl.addEventListener("blur", hideVideo);
-      
-      // Preload video when item comes into view
-      const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            console.log(`[${title}] 👁️ Item entered viewport, preloading video...`);
-            loadVideo();
-            observer.unobserve(itemEl);
-          }
-        });
-      }, {
-        rootMargin: "200px"
-      });
-      
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              loadVideo();
+              observer.unobserve(itemEl);
+            }
+          });
+        },
+        { rootMargin: "200px" }
+      );
+
       observer.observe(itemEl);
-      console.log(`[${title}] IntersectionObserver set up`);
-      
-      // Also preload on touch for mobile
-      itemEl.addEventListener("touchstart", () => {
-        console.log(`[${title}] 📱 Touch detected, preloading video...`);
-        loadVideo();
-      }, { once: true, passive: true });
-      
-      console.log(`[${title}] ✅ Video hover handlers initialized`);
-      
-    })(video, thumbnail, item, projectTitle);
+
+      itemEl.addEventListener(
+        "touchstart",
+        () => {
+          loadVideo();
+        },
+        { once: true, passive: true }
+      );
+    })(video, thumbnail, item);
   });
-  
-  // Summary
-  const videosFound = document.querySelectorAll(".project-hover-video").length;
-  console.log('=== Video initialization complete ===');
-  console.log(`Total videos found: ${videosFound}`);
-  console.log('Hover over project items to see video loading/playing logs');
 });
 </script>
