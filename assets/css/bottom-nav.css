@@ -68,6 +68,17 @@
   transition: transform 0.3s ease;
 }
 
+/* Ensure icon glyphs use Font Awesome (body font must not override ::before) */
+.bottom-nav-icon .fa-solid {
+  font-family: "Font Awesome 6 Free", sans-serif;
+  font-weight: 900;
+}
+
+.bottom-nav-icon .fa-brands {
+  font-family: "Font Awesome 6 Brands", sans-serif;
+  font-weight: 400;
+}
+
 .bottom-nav-logo {
   width: 100%;
   height: auto;

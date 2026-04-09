@@ -9,7 +9,8 @@
   'use strict';
 
   // Main content wrapper selector - exclude bottom nav and meta tags
-  const CONTENT_SELECTOR = 'body > *:not(.bottom-nav):not(script):not(link):not(style):not(meta):not(.intro-text-container)';
+  // Exclude home intro + masonry grid: home-intro.js owns the grid; animating it here doubles GSAP load and causes jank
+  const CONTENT_SELECTOR = 'body > *:not(.bottom-nav):not(script):not(link):not(style):not(meta):not(.intro-text-container):not(#masonry-container)';
   const BOTTOM_NAV_SELECTOR = '.bottom-nav';
   
   // Transition duration

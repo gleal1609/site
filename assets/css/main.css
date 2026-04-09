@@ -13,7 +13,7 @@ body {
 }
 
 /* Prevent flicker - hide content until transition script runs */
-body:not(.page-loaded) > *:not(.bottom-nav):not(script):not(link):not(style):not(meta):not(.intro-text-container) {
+body:not(.page-loaded) > *:not(.bottom-nav):not(script):not(link):not(style):not(meta):not(.intro-text-container):not(#masonry-container) {
   opacity: 0 !important;
   visibility: hidden !important;
   transform: translateY(20px) scale(0.98) !important;
@@ -46,6 +46,9 @@ html {
   z-index: 3000;
   pointer-events: auto;
   padding: 2rem;
+  /* Isolate intro paint/layout from the masonry grid to reduce jank during GSAP */
+  contain: layout paint;
+  isolation: isolate;
 }
 
 .intro-text {

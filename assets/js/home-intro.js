@@ -85,10 +85,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // Set initial state for container
   gsap.set(introText, { opacity: 1 });
   
-  // Set initial state for letters
+  // Set initial state for letters (GPU-friendly 3D flip)
   gsap.set(letters, {
     opacity: 1,
-    rotationX: 0
+    rotationX: 0,
+    transformPerspective: 800,
+    backfaceVisibility: 'hidden',
+    force3D: true
   });
 
   // Set initial state for projects grid (hidden, will fade in)
@@ -158,27 +161,24 @@ document.addEventListener("DOMContentLoaded", () => {
     line3.style.display = originalDisplay.line3 || '';
   };
 
-  // Wait for fonts to load before calculating widths
-  if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(() => {
-      setTimeout(calculateWidths, 100);
+  // Single layout pass after fonts + next paint (avoids duplicate timeouts / layout thrash)
+  const scheduleLayout = () => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(calculateWidths);
     });
+  };
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(scheduleLayout);
   } else {
-    setTimeout(calculateWidths, 500);
+    scheduleLayout();
   }
 
   // Also recalculate on window resize
   let resizeTimeout;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(calculateWidths, 250);
+    resizeTimeout = setTimeout(scheduleLayout, 250);
   });
-
-  // Calculate widths once more right before animation starts
-  // This ensures measurements are accurate even if fonts loaded slowly
-  setTimeout(() => {
-    calculateWidths();
-  }, 200);
 
   // Animation timeline (total duration: ~3.5 seconds)
   const tl = gsap.timeline({
@@ -258,13 +258,13 @@ document.addEventListener("DOMContentLoaded", () => {
       line4b.classList.add('intro-line-4b-outline');
     }
   }, 1.3)
-  // 1.5-2.5s: Letter-by-letter flip (10 letters, ~0.1s per letter)
-  // Use rotationX for vertical flip (upside down)
+  // 1.5-2.4s: Letter-by-letter flip (slightly tighter stagger = fewer overlapping repaints)
   .to(letters, {
     rotationX: 180,
-    duration: 0.14,
+    duration: 0.11,
     ease: 'power2.inOut',
-    stagger: 0.1
+    stagger: 0.06,
+    force3D: true
   }, 1.5)
   // 2.5-2.7s: Return to normal (filled white, right-side up)
   .to(line4b, {
@@ -276,18 +276,19 @@ document.addEventListener("DOMContentLoaded", () => {
   }, 2.5)
   .to(letters, {
     rotationX: 0,
-    duration: 0.15,
+    duration: 0.12,
     ease: 'power2.inOut',
-    stagger: 0.015
+    stagger: 0.012,
+    force3D: true
   }, 2.5)
-  // 2.7-3.5s: Fade out all words + fade in projects grid simultaneously (blended)
+  // 2.7-3.5s: Fade out all words + fade in projects grid simultaneously (no stagger = less main-thread work)
   .to([line1, line2, line3, line4a, line4b], {
     opacity: 0,
     y: -30,
     scale: 0.95,
-    duration: 0.8,
+    duration: 0.75,
     ease: 'power2.in',
-    stagger: 0.03
+    stagger: 0
   }, 2.7)
   .to(introContainer, {
     backgroundColor: 'transparent',

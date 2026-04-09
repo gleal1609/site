@@ -2,6 +2,7 @@ _site
 .sass-cache
 .jekyll-cache
 .jekyll-metadata
-vendor
+# Bundler only — do NOT use plain "vendor" (would ignore assets/vendor/font-awesome)
+vendor/bundle/
 Gemfile.lock
 testsprite_tests/
