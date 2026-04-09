@@ -39,71 +39,85 @@ layout: none
 
     <!-- Filters Section -->
     <div class="filters-section" x-show="showFilters" x-transition:enter="filter-enter" x-transition:enter-start="filter-enter-start" x-transition:enter-end="filter-enter-end" x-transition:leave="filter-leave" x-transition:leave-start="filter-leave-start" x-transition:leave-end="filter-leave-end">
-      <!-- Search Input -->
-      <div class="filter-group">
-        <label for="search-input" class="filter-label">Buscar</label>
-        <input 
-          type="text" 
-          id="search-input"
-          class="filter-input" 
-          placeholder="Buscar por título, cliente ou tipo de serviço..."
-          x-model="searchTerm"
-          @input="updateFilters()"
-        />
-      </div>
-
-      <!-- Service Types Filter -->
-      <div class="filter-group">
-        <label class="filter-label">Tipos de Serviço</label>
-        <div class="filter-checkboxes" x-show="availableServiceTypes.length > 0">
-          <template x-for="serviceType in availableServiceTypes" :key="serviceType">
-            <label class="checkbox-label">
-              <input 
-                type="checkbox" 
-                :value="serviceType"
-                x-model="selectedServiceTypes"
-                @change="updateFilters()"
-              />
-              <span x-text="serviceType"></span>
-            </label>
-          </template>
+      <div class="filters-section-grid">
+        <!-- Search Input -->
+        <div class="filter-group">
+          <label for="search-input" class="filter-label">Buscar</label>
+          <input 
+            type="text" 
+            id="search-input"
+            class="filter-input" 
+            placeholder="Buscar por título, cliente ou tipo de serviço..."
+            x-model="searchTerm"
+            @input="updateFilters()"
+          />
         </div>
-        <p x-show="availableServiceTypes.length === 0" class="filter-empty">Carregando...</p>
+
+        <!-- Service Types Filter -->
+        <div class="filter-group">
+          <label class="filter-label">Tipos de Serviço</label>
+          <p x-show="loading" class="filter-empty">Carregando...</p>
+          <div class="filter-checkboxes" x-show="!loading && availableServiceTypes.length > 0">
+            <template x-for="serviceType in availableServiceTypes" :key="serviceType">
+              <label class="checkbox-label">
+                <input 
+                  type="checkbox" 
+                  :value="serviceType"
+                  x-model="selectedServiceTypes"
+                  @change="updateFilters()"
+                />
+                <span x-text="serviceType"></span>
+              </label>
+            </template>
+          </div>
+          <p x-show="!loading && availableServiceTypes.length === 0" class="filter-empty">Nenhum tipo listado</p>
+        </div>
+
+        <!-- Year Filter -->
+        <div class="filter-group">
+          <label for="year-select" class="filter-label">Ano</label>
+          <select 
+            id="year-select"
+            class="filter-select" 
+            x-model="selectedYear"
+            @change="updateFilters()"
+          >
+            <option value="">Todos os anos</option>
+            <template x-for="year in availableYears" :key="year">
+              <option :value="year" x-text="year"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Sort -->
+        <div class="filter-group">
+          <label for="sort-select" class="filter-label">Ordenar</label>
+          <select
+            id="sort-select"
+            class="filter-select"
+            x-model="sortMode"
+            @change="updateFilters()"
+          >
+            <option value="order">Padrão</option>
+            <option value="date">Data (mais recente primeiro)</option>
+            <option value="service">Tipo de Serviço</option>
+          </select>
+        </div>
       </div>
 
-      <!-- Year Filter -->
-      <div class="filter-group">
-        <label for="year-select" class="filter-label">Ano</label>
-        <select 
-          id="year-select"
-          class="filter-select" 
-          x-model="selectedYear"
-          @change="updateFilters()"
-        >
-          <option value="">Todos os anos</option>
-          <template x-for="year in availableYears" :key="year">
-            <option :value="year" x-text="year"></option>
-          </template>
-        </select>
-      </div>
-
-      <!-- Clear Filters Button -->
-      <div class="filter-group">
-        <button 
-          class="clear-filters-btn" 
+      <div class="filters-section-footer">
+        <p class="results-count">
+          <span x-text="filteredProjects.length"></span>
+          <span x-text="filteredProjects.length === 1 ? 'projeto encontrado' : 'projetos encontrados'"></span>
+        </p>
+        <button
+          type="button"
+          class="clear-filters-btn clear-filters-btn--footer"
           @click="clearFilters()"
           :disabled="!hasActiveFilters()"
         >
           Limpar Filtros
         </button>
-      </div>
-
-      <!-- Results Count -->
-      <div class="filter-group">
-        <p class="results-count">
-          <span x-text="filteredProjects.length"></span> 
-          <span x-text="filteredProjects.length === 1 ? 'projeto encontrado' : 'projetos encontrados'"></span>
-        </p>
       </div>
     </div>
 
@@ -139,7 +153,6 @@ layout: none
     <!-- Empty State -->
     <div class="empty-state" x-show="!loading && !error && filteredProjects.length === 0" x-cloak>
       <p>Nenhum projeto encontrado com os filtros selecionados.</p>
-      <button class="clear-filters-btn" @click="clearFilters()">Limpar Filtros</button>
     </div>
   </div>
 

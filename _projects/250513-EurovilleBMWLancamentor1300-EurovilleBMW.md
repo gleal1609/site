@@ -10,7 +10,6 @@ date_mmddyyyy: "05132025"
 year: 2025
 show_on_home: true
 order: 8
-home_order: 8
 home_size: 2x1
 ---
 

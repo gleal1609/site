@@ -15,7 +15,6 @@ permalink: /projects.json
     "year": {{ project.year }},
     "show_on_home": {% if project.show_on_home %}true{% else %}false{% endif %},
     "order": {% if project.order %}{{ project.order }}{% else %}999{% endif %},
-    "home_order": {% if project.home_order %}{{ project.home_order }}{% else %}999{% endif %},
     "home_size": {% if project.home_size %}{{ project.home_size | jsonify }}{% else %}"1x1"{% endif %},
     "pixieset_url": {% if project.pixieset_url %}{{ project.pixieset_url | jsonify }}{% else %}null{% endif %},
     "youtube_url": {% if project.youtube_url %}{{ project.youtube_url | jsonify }}{% else %}null{% endif %},

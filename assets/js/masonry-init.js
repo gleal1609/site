@@ -1,6 +1,8 @@
 // Packery Masonry Initialization
 let packeryInstance = null;
 let resizeTimeout = null;
+/** layoutComplete fires on every relayout; entrance stagger should run only once. */
+let homeEntranceAnimationDone = false;
 
 function calculateColumnWidth(container) {
   // Get actual available width (accounting for padding)
@@ -43,8 +45,9 @@ function initMasonry() {
     packeryInstance = null;
   }
 
-  // Wait a bit for DOM to be ready
-  setTimeout(() => {
+  homeEntranceAnimationDone = false;
+
+  const runInit = () => {
     const grid = container.querySelector('.projects-grid');
     if (!grid) {
       console.warn('Projects grid not found');
@@ -90,40 +93,37 @@ function initMasonry() {
       percentPosition: false
     });
 
-    // Layout complete callback
+    // Layout complete callback (fires on every layout — only stagger once)
     packeryInstance.on('layoutComplete', () => {
+      if (homeEntranceAnimationDone) return;
+      homeEntranceAnimationDone = true;
+
       // Animate items in with GSAP
       if (typeof gsap !== 'undefined') {
         const items = Array.from(grid.querySelectorAll('.project-item'));
-        // Sort by data-home-order to animate in order
+        // Sort by data-order (portfolio order) for stagger animation
         items.sort((a, b) => {
-          const orderA = parseInt(a.getAttribute('data-home-order')) || 999;
-          const orderB = parseInt(b.getAttribute('data-home-order')) || 999;
+          const orderA = parseInt(a.getAttribute('data-order'), 10) || 999;
+          const orderB = parseInt(b.getAttribute('data-order'), 10) || 999;
           return orderA - orderB;
         });
-        
-        gsap.fromTo(items, 
-          { 
-            opacity: 0, 
-            scale: 1, 
-            y: 0 
-          },
-          { 
-            opacity: 1, 
-            scale: 1, 
-            y: 0, 
-            stagger: 0.05, 
-            duration: 0.6,
-            staggerEase: 'power2.out'
-          }
-        );
+
+        gsap.set(items, { opacity: 0 });
+
+        // Do not clearProps('opacity'): .project-item { opacity: 0 } in CSS would win and tiles would vanish.
+        gsap.to(items, {
+          opacity: 1,
+          duration: 0.35,
+          stagger: 0.035,
+          ease: 'power2.out'
+        });
       } else {
         // Fallback: just show items
         const items = grid.querySelectorAll('.project-item');
         items.forEach((item, index) => {
           setTimeout(() => {
             item.style.opacity = '1';
-          }, index * 50);
+          }, index * 40);
         });
       }
     });
@@ -134,7 +134,9 @@ function initMasonry() {
     // Handle window resize - recalculate columnWidth
     window.removeEventListener('resize', handleResize);
     window.addEventListener('resize', handleResize);
-  }, 100);
+  };
+
+  requestAnimationFrame(() => requestAnimationFrame(runInit));
 }
 
 function handleResize() {

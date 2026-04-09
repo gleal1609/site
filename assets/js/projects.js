@@ -13,6 +13,8 @@ function projectsPage(projectsJsonUrl) {
     searchTerm: '',
     selectedServiceTypes: [],
     selectedYear: '',
+    /** 'order' = Padrão (CMS); 'date' = data; 'service' = tipo de serviço */
+    sortMode: 'order',
     showFilters: false,
     
     // Available filter options (populated from projects)
@@ -34,19 +36,12 @@ function projectsPage(projectsJsonUrl) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        const projects = await response.json();
-        
-        // Sort projects: newest first (year desc, then date_mmddyyyy desc)
-        projects.sort((a, b) => {
-          if (b.year !== a.year) {
-            return b.year - a.year;
-          }
-          // If same year, sort by date_mmddyyyy descending
-          return b.date_mmddyyyy.localeCompare(a.date_mmddyyyy);
-        });
-        
+        const raw = await response.json();
+        const projects = Array.isArray(raw) ? raw : [];
+
         this.allProjects = projects;
-        this.filteredProjects = projects;
+        this.filteredProjects = projects.slice();
+        this.applySortToList(this.filteredProjects);
         
         // Extract unique service types and years
         this.extractFilterOptions();
@@ -98,8 +93,13 @@ function projectsPage(projectsJsonUrl) {
           this.selectedYear = yearParam;
         }
         
+        const sortParam = params.get('sort');
+        if (sortParam === 'date' || sortParam === 'order' || sortParam === 'service') {
+          this.sortMode = sortParam;
+        }
+        
         // Update filters if any were applied
-        if (searchParam || serviceParams.length > 0 || yearParam) {
+        if (searchParam || serviceParams.length > 0 || yearParam || sortParam) {
           this.updateFilters();
         }
       }
@@ -171,10 +171,57 @@ function projectsPage(projectsJsonUrl) {
         });
       }
       
+      this.applySortToList(filtered);
       this.filteredProjects = filtered;
       
       // Sync filters to URL (debounced for search input)
       this.syncFiltersToUrl();
+    },
+    
+    /**
+     * Ordenação da lista: por `order` (CMS) ou por data (mais recente primeiro).
+     */
+    applySortToList(list) {
+      list.sort((a, b) => this.compareProjects(a, b));
+    },
+    
+    compareProjects(a, b) {
+      if (this.sortMode === 'date') {
+        const ya = Number(a.year);
+        const yb = Number(b.year);
+        if (!Number.isNaN(yb) && !Number.isNaN(ya) && yb !== ya) {
+          return yb - ya;
+        }
+        const da = a.date_mmddyyyy || '';
+        const db = b.date_mmddyyyy || '';
+        return db.localeCompare(da);
+      }
+      if (this.sortMode === 'service') {
+        const sa = this.primaryServiceSortKey(a);
+        const sb = this.primaryServiceSortKey(b);
+        const c = sa.localeCompare(sb, 'pt-BR');
+        if (c !== 0) return c;
+        return (a.title || '').localeCompare(b.title || '', 'pt-BR');
+      }
+      const orderA = Number(a.order != null ? a.order : 999);
+      const orderB = Number(b.order != null ? b.order : 999);
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      return (a.title || '').localeCompare(b.title || '', 'pt-BR');
+    },
+
+    /** Primeiro tipo de serviço (ordem alfabética PT) para ordenação */
+    primaryServiceSortKey(project) {
+      const types = project.service_types;
+      if (!types || !Array.isArray(types) || types.length === 0) {
+        return '\uffff';
+      }
+      const sorted = types
+        .map((t) => String(t).trim())
+        .filter(Boolean)
+        .sort((x, y) => x.localeCompare(y, 'pt-BR'));
+      return sorted[0] || '\uffff';
     },
     
     /**
@@ -205,6 +252,10 @@ function projectsPage(projectsJsonUrl) {
           params.set('year', this.selectedYear);
         }
         
+        if (this.sortMode && this.sortMode !== 'order') {
+          params.set('sort', this.sortMode);
+        }
+        
         // Update URL hash without page reload
         const newHash = params.toString();
         const newUrl = newHash ? `#${newHash}` : '';
@@ -223,6 +274,7 @@ function projectsPage(projectsJsonUrl) {
       this.searchTerm = '';
       this.selectedServiceTypes = [];
       this.selectedYear = '';
+      this.sortMode = 'order';
       this.updateFilters();
       // Clear URL hash
       history.pushState(null, '', window.location.pathname);
@@ -234,7 +286,8 @@ function projectsPage(projectsJsonUrl) {
     hasActiveFilters() {
       return this.searchTerm.trim() !== '' || 
              this.selectedServiceTypes.length > 0 || 
-             this.selectedYear !== '';
+             this.selectedYear !== '' ||
+             this.sortMode !== 'order';
     }
   };
 }

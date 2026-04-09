@@ -1,6 +1,7 @@
 // Packery Masonry for Projects Page
 let projectsPackeryInstance = null;
 let projectsResizeTimeout = null;
+let projectsEntranceAnimationDone = false;
 
 function calculateProjectsColumnWidth(container) {
   // Get actual available width (accounting for padding)
@@ -79,6 +80,8 @@ function initProjectsMasonry() {
     projectsPackeryInstance = null;
   }
 
+  projectsEntranceAnimationDone = false;
+
   // Wait for Alpine to render and images to load
   setTimeout(() => {
     const grid = document.getElementById('projects-grid');
@@ -126,23 +129,22 @@ function initProjectsMasonry() {
         percentPosition: false
       });
 
-    // Layout complete callback
+    // Layout complete callback (only first layout — relayouts skip stagger)
     projectsPackeryInstance.on('layoutComplete', () => {
-      // Animate items in with GSAP
+      if (projectsEntranceAnimationDone) return;
+      projectsEntranceAnimationDone = true;
+
       if (typeof gsap !== 'undefined') {
         const itemsArray = Array.from(items);
-        gsap.fromTo(itemsArray, 
-          { 
-            opacity: 0, 
-            scale: 0.8, 
-            y: 20 
-          },
-          { 
-            opacity: 1, 
-            scale: 1, 
-            y: 0, 
-            stagger: 0.03, 
-            duration: 0.5,
+        gsap.fromTo(
+          itemsArray,
+          { opacity: 0, scale: 0.8, y: 20 },
+          {
+            opacity: 1,
+            scale: 1,
+            y: 0,
+            stagger: 0.03,
+            duration: 0.45,
             ease: 'power2.out'
           }
         );

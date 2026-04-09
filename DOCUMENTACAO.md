@@ -41,6 +41,7 @@ Abra **http://127.0.0.1:4000** (porta exibida no terminal). Use sempre `bundle e
 - **`.gitignore`** ignora `Gemfile.lock` — cada máquina gera o seu; em equipe, considere versionar o lock e remover essa linha para builds idênticos.
 - **Assets pesados** (`/assets/img/projects/`, `/assets/video/projects/`, etc.): os Markdown em `_projects/` apontam para esses caminhos. Se as imagens/vídeos não estiverem no clone (Git LFS, entrega separada ou `.gitignore` local), a home e os detalhes aparecem com mídia quebrada até os arquivos existirem nessas pastas.
 - **Deploy:** `README.md` referencia **Netlify**; o `_config.yml` usa `url` de staging (`temp.reversofilmes.com.br`).
+- **Windows / PowerShell:** ao gravar `_projects/*.md` com `Set-Content -Encoding utf8`, o arquivo pode ganhar **BOM** no início. Se o Jekyll não reconhecer o front matter (`---`), a coleção `projects` fica vazia e `/projects.json` vira `[]`. Salve os `.md` como **UTF-8 sem BOM** ou remova os três bytes `EF BB BF` antes do primeiro `---`.
 
 ### 1.5 Comandos úteis
 
@@ -106,14 +107,14 @@ site/
 ### 2.4 Home (`_layouts/home.html`)
 
 - Texto de introdução animado (**GSAP**) e container `#intro-text`.
-- **`{% include projects-grid.html %}`:** lista projetos com `show_on_home: true`, ordenados por `home_order` / `order` / data; cada card pode ter thumbnail, vídeo de hover (`hover_preview`) e metadados `data-size` (`home_size`, ex.: `2x2`) para o masonry.
+- **`{% include projects-grid.html %}`:** lista projetos com `show_on_home: true`, ordenados por **`order`** (com desempate por data); cada card pode ter thumbnail, vídeo de hover (`hover_preview`) e metadados `data-size` (`home_size`, ex.: `2x2`) para o masonry.
 - **`{% include bottom-nav.html %}`:** navegação inferior (Projetos, Curupire-se, Sobre, logo home, YouTube, Instagram, WhatsApp).
 - Scripts: `page-transitions.js`, `home-intro.js`, `masonry-init.js` (usa **Packery** via CDN se necessário), `bottom-nav.js`.
 
 ### 2.5 Página Projetos (`_layouts/projects.html`)
 
 - Carrega **`/projects.json`** no cliente.
-- **Alpine.js:** busca, filtros por tipo de serviço e ano, sincronização com a URL; grid próprio (ver `assets/js/projects.js`, `projects-masonry.js`).
+- **Alpine.js:** busca, filtros por tipo de serviço e ano, **Ordenar:** Padrão (`order` no CMS), Data (mais recente primeiro) ou Tipo de Serviço (alfabético pelo primeiro tipo), sincronização com a URL (`#sort=date` / `service`); grid próprio (ver `assets/js/projects.js`, `projects-masonry.js`).
 
 ### 2.6 Detalhe do projeto (`_layouts/project.html`)
 
@@ -134,8 +135,7 @@ Campos usados pelo site (ver também `README.md` e `projects.json`):
 | `date_mmddyyyy` | Data para ordenação |
 | `year` | Ano |
 | `show_on_home` | `true` para aparecer na masonry da home |
-| `order` | Ordem geral |
-| `home_order` | Ordem na home |
+| `order` | Ordem no portfólio (home masonry e listagem `/projetos/` por padrão) |
 | `home_size` | Tamanho no grid (ex.: `1x1`, `2x2`) — consumido pelo JS de masonry |
 | `youtube_url` / `pixieset_url` | Opcionais na página de detalhe |
 

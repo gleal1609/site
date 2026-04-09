@@ -7,9 +7,31 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const introContainer = document.getElementById('intro-text');
+  const projectsGridEarly = document.querySelector('.projects-grid');
+  const masonryContainerEarly = document.getElementById('masonry-container');
+
+  // Skip heavy intro + stagger when user prefers reduced motion
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (introContainer) {
+      introContainer.classList.add('hidden');
+      introContainer.style.display = 'none';
+    }
+    if (projectsGridEarly) {
+      projectsGridEarly.classList.add('visible');
+      gsap.set(projectsGridEarly, { opacity: 1 });
+    }
+    if (masonryContainerEarly) {
+      masonryContainerEarly.classList.add('grid-enabled');
+    }
+    if (typeof initMasonry === 'function') {
+      initMasonry();
+    }
+    return;
+  }
+
   const introText = introContainer?.querySelector('.intro-text');
-  const projectsGrid = document.querySelector('.projects-grid');
-  const masonryContainer = document.getElementById('masonry-container');
+  const projectsGrid = projectsGridEarly;
+  const masonryContainer = masonryContainerEarly;
 
   if (!introContainer || !introText) {
     console.warn('Intro text elements not found');
@@ -166,34 +188,9 @@ document.addEventListener("DOMContentLoaded", () => {
         introContainer.classList.add('hidden');
         introContainer.style.display = 'none';
         
-        // Initialize masonry after intro completes
-        // Load Packery if not already loaded
-        if (typeof Packery === 'undefined') {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/packery@2/dist/packery.pkgd.min.js';
-          script.onload = () => {
-            if (typeof initMasonry === 'function') {
-              initMasonry();
-            }
-          };
-          document.head.appendChild(script);
-        } else {
-          if (typeof initMasonry === 'function') {
-            initMasonry();
-          } else {
-            // Wait for masonry script to load
-            const checkMasonry = setInterval(() => {
-              if (typeof initMasonry === 'function') {
-                clearInterval(checkMasonry);
-                initMasonry();
-              }
-            }, 100);
-            
-            // Timeout after 5 seconds
-            setTimeout(() => {
-              clearInterval(checkMasonry);
-            }, 5000);
-          }
+        // Initialize masonry after intro completes (Packery is bundled in home.html)
+        if (typeof initMasonry === 'function') {
+          initMasonry();
         }
       }, 100);
     }

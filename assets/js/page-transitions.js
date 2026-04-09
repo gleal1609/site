@@ -18,6 +18,9 @@
   // Track if transition is in progress
   let isTransitioning = false;
 
+  /** Avoid running initial fadeIn twice when both DOMContentLoaded and load fire (common on slow networks). */
+  let initialFadeInDone = false;
+
   // Hide content immediately to prevent flicker (runs synchronously)
   function hideContentImmediately() {
     const contentElements = Array.from(document.querySelectorAll(CONTENT_SELECTOR));
@@ -287,6 +290,9 @@
 
     // Fade in on page load
     const doFadeIn = () => {
+      if (initialFadeInDone) return;
+      initialFadeInDone = true;
+
       // Wait for GSAP if needed, but don't delay too long
       if (typeof gsap === 'undefined') {
         // Check if GSAP is loading

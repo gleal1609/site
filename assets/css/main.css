@@ -729,10 +729,32 @@ a:hover::after {
   background-color: rgba(255, 0, 0, 0.05);
   border: 1px solid rgba(255, 0, 0, 0.2);
   border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow: hidden;
+}
+
+.filters-section-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 2rem;
-  overflow: hidden;
+}
+
+.filters-section-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding-top: 1rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid rgba(255, 0, 0, 0.15);
+}
+
+.clear-filters-btn--footer {
+  margin-left: auto;
 }
 
 /* Filter transition animations */
@@ -1174,8 +1196,12 @@ a:hover::after {
   }
 
   .filters-section {
-    grid-template-columns: 1fr;
     padding: 1.5rem;
+    gap: 1.25rem;
+  }
+
+  .filters-section-grid {
+    grid-template-columns: 1fr;
     gap: 1.5rem;
   }
 
@@ -1217,6 +1243,22 @@ a:hover::after {
   .filters-section {
     padding: 1rem;
     gap: 1rem;
+  }
+
+  .filters-section-grid {
+    gap: 1rem;
+  }
+
+  .filters-section-footer {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .clear-filters-btn--footer {
+    margin-left: auto;
+    width: auto;
   }
 
   .filter-input,
@@ -1910,105 +1952,176 @@ a:hover::after {
   }
 }
 
-/* Curupire-se Page */
+/* Curupire-se: página travada ao viewport — rolagem só dentro do iframe do Google */
+html.curupire-se-root {
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body.curupire-se-body {
+  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
 .curupire-se-page {
-  min-height: 100vh;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
   background-color: #000;
   color: #ff0000;
-  padding: 2rem 2rem 8rem;
-  padding-top: 2rem;
+  padding: clamp(0.75rem, 2.5vw, 1.5rem) clamp(1rem, 4vw, 2rem)
+    calc(6.25rem + env(safe-area-inset-bottom, 0px));
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
 }
 
 .form-container {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   max-width: 900px;
   width: 100%;
   margin: 0 auto;
-  padding-top: 0;
 }
 
 .form-page-title {
   font-family: 'Montserrat', sans-serif;
-  font-size: 3rem;
+  font-size: clamp(1.5rem, 5vw, 3rem);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   text-align: center;
-  margin: 0 0 1rem 0;
+  margin: 0 0 0.5rem 0;
   color: #ff0000;
   line-height: 1.2;
+  flex-shrink: 0;
 }
 
 .form-page-subtitle {
   font-family: 'Poppins', sans-serif;
-  font-size: 1.25rem;
+  font-size: clamp(0.95rem, 2.2vw, 1.25rem);
   text-align: center;
-  margin: 0 0 3rem 0;
+  margin: 0 0 1rem 0;
   color: rgba(255, 0, 0, 0.8);
+  flex-shrink: 0;
 }
 
+/* Moldura escura: o branco vem só do iframe (Google), não do container — integra ao tema da página */
 .google-form-wrapper {
   position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  min-height: 800px;
-  background-color: #ffffff;
+  padding: clamp(10px, 2.5vw, 14px);
+  border-radius: 20px;
+  background: linear-gradient(
+    155deg,
+    rgba(255, 0, 0, 0.07) 0%,
+    rgba(12, 12, 12, 0.98) 38%,
+    #050505 100%
+  );
   border: 1px solid rgba(255, 0, 0, 0.2);
-  border-radius: 8px;
+  box-shadow:
+    0 28px 60px -18px rgba(0, 0, 0, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.google-form-wrapper::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 18%;
+  right: 18%;
+  height: 3px;
+  border-radius: 0 0 6px 6px;
+  background: linear-gradient(90deg, transparent, #cc0000 20%, #ff1a1a 50%, #cc0000 80%, transparent);
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+.google-form-frame {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  background: #0a0a0a;
 }
 
 .google-form-embed {
+  flex: 1 1 auto;
+  align-self: stretch;
   width: 100%;
+  min-height: 0;
   height: 100%;
-  min-height: 800px;
   border: none;
   display: block;
 }
 
+/* Mobile / estreito: menos “gutter” lateral + moldura fina para o iframe usar quase toda a largura */
 @media (max-width: 768px) {
-  .curupire-se-page {
-    padding: 1.5rem 1.5rem 8rem;
-    padding-top: 1.5rem;
-  }
-  
   .form-page-title {
-    font-size: 2rem;
     letter-spacing: 0.09em;
   }
-  
-  .form-page-subtitle {
-    font-size: 1rem;
-    margin-bottom: 2rem;
+
+  .curupire-se-page {
+    padding-top: 0.75rem;
+    padding-left: max(0.65rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.65rem, env(safe-area-inset-right, 0px));
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
   }
-  
+
+  .form-container {
+    max-width: none;
+  }
+
   .google-form-wrapper {
-    min-height: 600px;
+    padding: 8px 5px;
+    border-radius: 16px;
   }
-  
-  .google-form-embed {
-    min-height: 600px;
+
+  .google-form-frame {
+    border-radius: 10px;
   }
 }
 
 @media (max-width: 480px) {
-  .curupire-se-page {
-    padding: 1rem 1rem 8rem;
-    padding-top: 1rem;
+  .form-page-subtitle {
+    margin-bottom: 0.65rem;
   }
-  
+
   .form-page-title {
-    font-size: 1.5rem;
-    letter-spacing: 0.08em;
+    font-size: clamp(1.35rem, 7vw, 2.25rem);
+    padding-inline: 0.15rem;
   }
-  
+
+  .curupire-se-page {
+    padding-top: 0.5rem;
+    padding-left: max(0.35rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.35rem, env(safe-area-inset-right, 0px));
+    padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
   .google-form-wrapper {
-    min-height: 500px;
+    padding: 5px 3px;
+    border-radius: 14px;
   }
-  
-  .google-form-embed {
-    min-height: 500px;
+
+  .google-form-frame {
+    border-radius: 9px;
   }
 }
