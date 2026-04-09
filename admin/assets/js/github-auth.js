@@ -33,8 +33,17 @@ class GitHubAuth {
       let settled = false;
 
       const onMessage = (e) => {
-        if (e.origin !== 'https://api.netlify.com') return;
-        const match = String(e.data).match(
+        if (!e.data || typeof e.data !== 'string') return;
+
+        // Step 1 of handshake: popup announces it's authorizing.
+        // We must reply so it proceeds to send the token.
+        if (e.data === 'authorizing:github') {
+          e.source.postMessage(e.data, e.origin);
+          return;
+        }
+
+        // Step 2: popup sends the actual token (or error).
+        const match = e.data.match(
           /^authorization:github:(success|error):(.+)$/,
         );
         if (!match) return;
