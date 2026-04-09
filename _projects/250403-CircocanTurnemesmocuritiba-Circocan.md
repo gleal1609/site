@@ -10,7 +10,7 @@ year: 2025
 show_on_home: true
 order: 1
 home_order: 1
-home_size: 2x2
+home_size: 1x2
 youtube_url: https://www.youtube.com/watch?v=B2-UqdMuZSA
 pixieset_url: https://reversofilmes.pixieset.com/circocanturnemesmo/
 ---
