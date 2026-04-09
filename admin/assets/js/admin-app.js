@@ -177,7 +177,7 @@ function adminApp() {
       if (!this.pendingCount) return;
       this.saving = true;
       try {
-        const changes = [];
+        let saved = 0;
         for (const item of this.pendingOrder) {
           const proj = this.projects.find((p) => p._slug === item.slug);
           if (!proj || proj.order === item.order) continue;
@@ -185,23 +185,20 @@ function adminApp() {
           const file = await this._api.getFile(proj._path);
           const { data, body } = FrontMatter.parse(file.content);
           data.order = item.order;
-          changes.push({
-            path: proj._path,
-            content: FrontMatter.serialize(data, body),
-          });
+          const content = FrontMatter.serialize(data, body);
+
+          await this._api.putFile(
+            proj._path,
+            content,
+            `Reorder: ${data.title || proj._slug} → #${item.order}`,
+          );
+          proj.order = item.order;
+          saved++;
         }
 
-        if (changes.length) {
-          await this._api.atomicCommit(
-            changes,
-            `Reorder ${changes.length} project(s)`,
-          );
-          this.pendingOrder.forEach((o) => {
-            const p = this.projects.find((x) => x._slug === o.slug);
-            if (p) p.order = o.order;
-          });
+        if (saved) {
           this.pendingOrder = [];
-          this._toast(`Ordem de ${changes.length} projeto(s) salva!`, 'success');
+          this._toast(`Ordem de ${saved} projeto(s) salva!`, 'success');
         }
       } catch (e) {
         this._toast('Erro ao salvar ordem: ' + e.message, 'error');
