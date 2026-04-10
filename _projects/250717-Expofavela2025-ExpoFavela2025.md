@@ -8,7 +8,7 @@ client: ExpoFavela2025
 date_mmddyyyy: '07172025'
 year: 2025
 show_on_home: true
-order: 3
+order: 4
 home_order: null
 home_size: 1x2
 youtube_url: ''
