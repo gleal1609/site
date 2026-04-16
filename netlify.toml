@@ -7,10 +7,11 @@
   # Mesmo host que site.reverso_cms_api + /api/projects/export. Com custom domain cms.*, alinhar meta + CSP abaixo.
   WORKER_EXPORT_URL = "https://reverso-cms-api.reverso-cms.workers.dev/api/projects/export"
 
+# Alpine.js avalia x-data / @click / etc. com Function() — exige 'unsafe-eval' em script-src (só neste path).
 [[headers]]
   for = "/admin/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' cdn.jsdelivr.net; style-src 'self' cdn.jsdelivr.net 'unsafe-inline'; connect-src https://reverso-cms-api.reverso-cms.workers.dev; img-src 'self' https://media.reversofilmes.com.br data:; media-src https://media.reversofilmes.com.br"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' cdn.jsdelivr.net 'unsafe-eval'; style-src 'self' cdn.jsdelivr.net 'unsafe-inline'; connect-src https://reverso-cms-api.reverso-cms.workers.dev; img-src 'self' https://media.reversofilmes.com.br data:; media-src https://media.reversofilmes.com.br"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
 
