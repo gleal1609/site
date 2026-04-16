@@ -3,9 +3,33 @@
 # site
 Site Reverso Filmes
 
-## Locally
+## Ambiente local
 
-`bundle exec jekyll serve`
+### Dados do portfólio (`_data/projects.json`)
+
+O Jekyll **não** lê o D1 em tempo real. A home e o `/projects.json` usam **`_data/projects.json`**, gerado pelo script de export (`scripts/fetch-projects.mjs`), com os mesmos dados que o Netlify pega no build.
+
+Enquanto você edita no painel admin, o **build local fica desatualizado** até rodar esse script de novo (ou puxar do Git um `_data/projects.json` que outra pessoa já tenha gerado).
+
+**Token:** use o **token de build / export** do Worker (`CF_BUILD_TOKEN` no ambiente — o mesmo valor configurado no Netlify / `cf-worker` / `.dev.vars`). **Não** é o token de sessão do GitHub no admin (`AUTH_TOKEN` / cookie da API).
+
+No PowerShell, na raiz do repositório:
+
+```powershell
+$env:WORKER_EXPORT_URL = "https://reverso-cms-api.reverso-cms.workers.dev/api/projects/export"
+$env:CF_BUILD_TOKEN = "<mesmo BUILD_TOKEN do Worker / Netlify / .dev.vars>"
+node scripts/fetch-projects.mjs
+```
+
+Ajuste `WORKER_EXPORT_URL` para a URL real do seu Worker (tem que ser o endpoint `/api/projects/export`, alinhado ao `netlify.toml` e ao `WORKER_EXPORT_URL` do deploy).
+
+Depois, rode o Jekyll e confira a home e o portfólio no navegador:
+
+```powershell
+bundle exec jekyll serve
+```
+
+Para apenas pré-visualizar sem sincronizar dados, rode `bundle exec jekyll serve` direto — o `_data/projects.json` continua sendo o que já estiver no disco.
 
 ## Project File Naming Convention
 

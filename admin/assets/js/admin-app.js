@@ -106,21 +106,36 @@ function adminApp() {
       this._grid = null;
     },
 
-    async _loadProjects() {
+    /**
+     * @param {{ silent?: boolean }} opts
+     * silent=true: não usa o estado global `loading` (evita esconder o app com x-show="!loading",
+     * o que zera a largura do grid e quebra o Packery). Usar após salvar/excluir.
+     */
+    async _loadProjects(opts = {}) {
+      const silent = opts.silent === true;
       if (!this._api) return;
-      this.loading = true;
+      if (!silent) this.loading = true;
+      let ok = false;
       try {
         this.projects = await this._api.listProjects();
-        this.projects.forEach(p => {
+        this.projects.forEach((p) => {
           p._slug = p.slug;
           if (!p.url) p.url = `/projects/${p.slug}/`;
         });
-        this.$nextTick(() => this._renderGrid());
+        ok = true;
       } catch (e) {
         console.error(e);
         this._toast('Erro ao carregar projetos: ' + e.message, 'error');
       }
-      this.loading = false;
+      if (!silent) this.loading = false;
+
+      if (!ok) return;
+
+      await this.$nextTick();
+      // Após tirar display:none do app, esperar layout para clientWidth do grid > 0
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => this._renderGrid());
+      });
     },
 
     _renderGrid() {
@@ -332,7 +347,7 @@ function adminApp() {
         }
 
         this.closeEditor();
-        await this._loadProjects();
+        await this._loadProjects({ silent: true });
       } catch (e) {
         if (e.message.includes('409') || e.message.includes('Conflict')) {
           this._toast('Conflito: outro utilizador editou. Recarregue a página.', 'error');
@@ -352,7 +367,7 @@ function adminApp() {
         await this._api.deleteProject(this.form._slug);
         this._toast('Projeto excluído', 'success');
         this.closeEditor();
-        await this._loadProjects();
+        await this._loadProjects({ silent: true });
       } catch (e) {
         this._toast('Erro ao excluir: ' + e.message, 'error');
       }
