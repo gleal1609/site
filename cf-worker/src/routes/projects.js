@@ -1,6 +1,12 @@
 import { json, error } from '../utils/response.js';
 import { logAudit } from '../utils/audit.js';
 import { SLUG_RE, SLUG_PATH_RE } from '../utils/slug.js';
+import {
+  ingestYoutubeThumbnailToR2,
+  isR2MediaKey,
+  isYoutubeHostedThumbnail,
+  youtubeVideoId,
+} from '../utils/youtube.js';
 
 const MAX_TITLE = 200;
 const MAX_BODY = 102400;
@@ -121,6 +127,11 @@ export async function handleCreate(request, env, ctx) {
   ).bind(data.slug).first();
   if (existing) return error('Slug already exists', 409);
 
+  let thumbnailVal = data.thumbnail || null;
+  if (!thumbnailVal && data.youtube_url) {
+    thumbnailVal = await ingestYoutubeThumbnailToR2(env, data.slug, data.youtube_url);
+  }
+
   const svcJson = Array.isArray(data.service_types)
     ? JSON.stringify(data.service_types)
     : '[]';
@@ -133,7 +144,7 @@ export async function handleCreate(request, env, ctx) {
   ).bind(
     data.slug, data.title, data.body_md || null,
     data.description != null ? String(data.description) : null,
-    data.thumbnail || null, data.hover_preview || null,
+    thumbnailVal, data.hover_preview || null,
     svcJson, data.client || null, data.date_mmddyyyy || null,
     data.year || null, data.show_on_home ? 1 : 0,
     data.order || 0, data.home_size || '1x1',
@@ -157,12 +168,41 @@ export async function handleUpdate(slug, request, env, ctx) {
   if (data.version === undefined) return error('version field required for updates', 400);
 
   const existing = await env.DB.prepare(
-    'SELECT version, published FROM projects WHERE slug = ?',
+    'SELECT version, published, youtube_url, thumbnail FROM projects WHERE slug = ?',
   ).bind(slug).first();
   if (!existing) return error('Project not found', 404);
 
   if (existing.version !== data.version) {
     return error('Conflict: project was modified by another user. Reload and try again.', 409);
+  }
+
+  const nextYoutube =
+    data.youtube_url !== undefined ? data.youtube_url : existing.youtube_url;
+  const nextThumbInput =
+    data.thumbnail !== undefined ? data.thumbnail : existing.thumbnail;
+  const ytChanged =
+    data.youtube_url !== undefined &&
+    String(data.youtube_url || '') !== String(existing.youtube_url || '');
+
+  if (nextYoutube && youtubeVideoId(nextYoutube)) {
+    const vid = youtubeVideoId(nextYoutube);
+    const alreadyHasThisIngest =
+      typeof nextThumbInput === 'string' &&
+      nextThumbInput.includes(`thumb-yt-${vid}.jpg`);
+
+    let shouldIngest = false;
+    if (!nextThumbInput || isYoutubeHostedThumbnail(nextThumbInput)) {
+      shouldIngest = true;
+    } else if (ytChanged && !isR2MediaKey(nextThumbInput)) {
+      shouldIngest = true;
+    } else if (ytChanged && isR2MediaKey(nextThumbInput) && !alreadyHasThisIngest) {
+      shouldIngest = true;
+    }
+
+    if (shouldIngest && !alreadyHasThisIngest) {
+      const key = await ingestYoutubeThumbnailToR2(env, slug, nextYoutube);
+      if (key) data.thumbnail = key;
+    }
   }
 
   const fields = [];
