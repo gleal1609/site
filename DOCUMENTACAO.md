@@ -207,6 +207,53 @@ O admin SPA consome a Worker API. Edições e uploads vão para D1 e R2 (sem toc
 
 **`_projects/*.md` e D1 não sincronizam sozinhos.** Cada alteração no Git nos `.md` **não** atualiza a base D1. Para alinhar o admin (que lê sempre o Worker/D1), execute `node scripts/import-projects.mjs` com `WORKER_URL` e `AUTH_TOKEN` (cookie `__session` após login), ou crie/edite só pelo admin. No Jekyll, se `_data/projects.json` existir mas for um array **vazio** `[]`, o filtro Liquid `default` **não** substitui por `site.projects`; os includes usam fallback explícito (`size == 0` → coleção `_projects/`). **Descompasso:** se o export no Netlify falhar e `fetch-projects.mjs` reutilizar **cache** antigo, o site pode listar projetos antigos com o D1 já vazio ou diferente — o admin reflete só o D1. Nesse caso limpe o cache de build no Netlify e garanta `CF_BUILD_TOKEN` + export 200.
 
+#### Sincronizar `_data/projects.json` localmente (build alinhado ao D1)
+
+O Jekyll **não** lê o D1 em tempo real: usa **`_data/projects.json`**, gerado por `scripts/fetch-projects.mjs` no mesmo fluxo que o Netlify (`WORKER_EXPORT_URL` + `Authorization: Bearer` com **`CF_BUILD_TOKEN`** — o token de **build/export**, não o cookie de sessão do admin).
+
+No PowerShell, na raiz do site:
+
+```powershell
+$env:WORKER_EXPORT_URL = "https://<seu-worker>.workers.dev/api/projects/export"
+$env:CF_BUILD_TOKEN = "<BUILD_TOKEN configurado no Worker / Netlify / .dev.vars>"
+node scripts/fetch-projects.mjs
+bundle exec jekyll serve
+```
+
+Ajuste `WORKER_EXPORT_URL` ao endpoint real `/api/projects/export` (como em `netlify.toml`).
+
+#### Miniaturas YouTube → R2 e export
+
+- O Worker pode **baixar** uma JPEG do YouTube (`hqdefault` → … → `maxresdefault`) e gravar no **R2**, guardando no D1 só a **chave** (`projects/<slug>/thumb-yt-<videoId>.jpg`). O site e o export passam a usar URLs sob **`MEDIA_BASE_URL`** (ex.: `media.reversofilmes.com.br`), não `img.youtube.com`.
+- Isto corre **ao criar** projeto (sem thumbnail manual) com `youtube_url`, **ou ao editar/guardar** no admin quando a thumbnail ainda aponta para o CDN do YouTube.
+- **Projetos antigos** em que o D1 ainda tem URL do YouTube **não mudam** só com deploy: é preciso **guardar cada um no admin** ou correr a migração em massa (mesmo token de build):
+
+```powershell
+$env:WORKER_API_BASE = "https://<seu-worker>.workers.dev"
+$env:CF_BUILD_TOKEN = "<BUILD_TOKEN>"
+node scripts/backfill-youtube-thumbnails.mjs
+```
+
+Ou `curl -X POST -H "Authorization: Bearer <TOKEN>" https://<worker>/api/projects/backfill-youtube-thumbnails`
+
+Resposta JSON: `candidates`, `ingested`, `failed` (slugs em que o download ao YouTube falhou — bloqueio de rede, vídeo sem miniatura, etc.). Depois: `fetch-projects.mjs` + deploy do site (ou build local).
+
+**Nota:** a JPEG que o YouTube serve para Shorts pode continuar a ser uma composição 16:9 (faixa central + laterais). Mudar o armazenamento para R2 **não** altera o desenho do ficheiro; só muda o host. O CSS da home ajusta `object-fit` / `object-position` por `data-size` (`home_size`) para encaixar melhor em 1×1, 2×1 e 2×2.
+
+#### Encaixe de mídia nos blocos da masonry (home)
+
+- **`assets/css/main.css`:** `.project-thumbnail` e `.project-hover-video` usam `object-fit: cover`; para tamanhos **1×1, 2×1 e 2×2** usa-se `object-position: center 22%` para favorecer a zona central típica de capas verticais em moldura larga; **1×2** mantém `center`.
+- **Texto:** título e cliente com `-webkit-line-clamp` (mais restritivo em **1×1**).
+
+#### Evolução: processamento de imagem / vídeo (roadmap)
+
+Para **recorte** automático ao centro 9:16, normalização por `home_size`, ou **preview** de vídeo gerado a partir de ficheiro, o fluxo atual (JPEG estática + MP4/WebM em R2) pode ser estendido com:
+
+- **Cloudflare Images** (resize/crop via URL) — custo / limites do plano; ou
+- **Worker + WASM** (ex. Squoosh) para JPEG, ou fila com **FFmpeg** noutro serviço (não disponível de forma nativa no Worker).
+
+São passos opcionais quando o ajuste só com CSS + miniaturas hospedadas no R2 não for suficiente.
+
 ### 3.2 Produção: OAuth GitHub via Worker
 
 1. **GitHub:** criar um **OAuth App** com **Callback URL** `https://cms.reversofilmes.com.br/api/auth/github/callback` e **Homepage URL** `https://admin.reversofilmes.com.br`.

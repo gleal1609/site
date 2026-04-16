@@ -3,7 +3,16 @@ import { authMiddleware, checkRevocation, checkAllowlist, buildTokenAuth } from 
 import { csrfMiddleware } from './middleware/csrf.js';
 import { handleHealth } from './routes/health.js';
 import { handleGitHubLogin, handleGitHubCallback, handleLogout, handleMe } from './routes/auth.js';
-import { handleExport, handleList, handleGet, handleCreate, handleUpdate, handleDelete, handleReorder } from './routes/projects.js';
+import {
+  handleExport,
+  handleList,
+  handleGet,
+  handleCreate,
+  handleUpdate,
+  handleDelete,
+  handleReorder,
+  handleBackfillYoutubeThumbnails,
+} from './routes/projects.js';
 import { handleUpload } from './routes/upload.js';
 import { handleDeploy } from './routes/deploy.js';
 import { weeklyBackup } from './cron/backup.js';
@@ -79,6 +88,12 @@ async function route(request, env, ctx, path) {
     const authErr = await buildTokenAuth(request, env);
     if (authErr) return authErr;
     return handleExport(env);
+  }
+
+  if (path === '/api/projects/backfill-youtube-thumbnails' && method === 'POST') {
+    const authErr = await buildTokenAuth(request, env);
+    if (authErr) return authErr;
+    return handleBackfillYoutubeThumbnails(env);
   }
 
   const authErr = await authMiddleware(request, env, ctx);

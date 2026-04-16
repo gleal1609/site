@@ -22,6 +22,15 @@ function mediaPublicUrl(base, keyOrUrl) {
   return b ? `${b}/${s}` : s;
 }
 
+/** Converte URL absoluta do CDN de mídia na chave guardada no D1. */
+function stripMediaBaseToKey(value, base) {
+  if (value == null || value === '' || !base) return value;
+  const s = String(value);
+  const b = String(base).replace(/\/$/, '');
+  if (s.startsWith(`${b}/`)) return s.slice(b.length + 1);
+  return value;
+}
+
 /** DB column → array; invalid JSON → [] + log (admin/export stay usable). */
 function parseServiceTypes(value) {
   if (value == null || value === '') return [];
@@ -131,6 +140,9 @@ export async function handleCreate(request, env, ctx) {
   if (!thumbnailVal && data.youtube_url) {
     thumbnailVal = await ingestYoutubeThumbnailToR2(env, data.slug, data.youtube_url);
   }
+  thumbnailVal = stripMediaBaseToKey(thumbnailVal, env.MEDIA_BASE_URL || '');
+  let hoverVal = data.hover_preview || null;
+  hoverVal = stripMediaBaseToKey(hoverVal, env.MEDIA_BASE_URL || '');
 
   const svcJson = Array.isArray(data.service_types)
     ? JSON.stringify(data.service_types)
@@ -144,7 +156,7 @@ export async function handleCreate(request, env, ctx) {
   ).bind(
     data.slug, data.title, data.body_md || null,
     data.description != null ? String(data.description) : null,
-    thumbnailVal, data.hover_preview || null,
+    thumbnailVal, hoverVal,
     svcJson, data.client || null, data.date_mmddyyyy || null,
     data.year || null, data.show_on_home ? 1 : 0,
     data.order || 0, data.home_size || '1x1',
@@ -203,6 +215,14 @@ export async function handleUpdate(slug, request, env, ctx) {
       const key = await ingestYoutubeThumbnailToR2(env, slug, nextYoutube);
       if (key) data.thumbnail = key;
     }
+  }
+
+  const mediaBase = env.MEDIA_BASE_URL || '';
+  if (data.thumbnail !== undefined) {
+    data.thumbnail = stripMediaBaseToKey(data.thumbnail, mediaBase);
+  }
+  if (data.hover_preview !== undefined) {
+    data.hover_preview = stripMediaBaseToKey(data.hover_preview, mediaBase);
   }
 
   const fields = [];
@@ -308,4 +328,44 @@ export async function handleReorder(request, env, ctx) {
   });
 
   return json({ reordered: items.length });
+}
+
+/**
+ * Migração em massa: grava no R2 miniaturas ainda apontando para o CDN do YouTube.
+ * Autenticação: mesmo token de build do export (`Authorization: Bearer` + `CF_BUILD_TOKEN`).
+ * Não incrementa `version` (evita conflitos no admin). Disparar antes do próximo build Netlify
+ * ou após deploy do Worker.
+ */
+export async function handleBackfillYoutubeThumbnails(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT slug, youtube_url, thumbnail FROM projects
+     WHERE TRIM(COALESCE(youtube_url, '')) != ''
+       AND (
+         TRIM(COALESCE(thumbnail, '')) = ''
+         OR INSTR(COALESCE(thumbnail, ''), 'img.youtube.com') > 0
+         OR INSTR(COALESCE(thumbnail, ''), 'ytimg.com') > 0
+       )`,
+  ).all();
+
+  let ingested = 0;
+  const failed = [];
+  for (const row of results) {
+    const key = await ingestYoutubeThumbnailToR2(env, row.slug, row.youtube_url);
+    if (!key) {
+      failed.push({ slug: row.slug, reason: 'ingest_failed_or_blocked' });
+      continue;
+    }
+    await env.DB.prepare(
+      `UPDATE projects SET thumbnail = ?, updated_at = datetime('now') WHERE slug = ?`,
+    )
+      .bind(key, row.slug)
+      .run();
+    ingested++;
+  }
+
+  return json({
+    candidates: results.length,
+    ingested,
+    failed,
+  });
 }
