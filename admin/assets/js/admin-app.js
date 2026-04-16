@@ -1,20 +1,23 @@
 /**
- * Main Alpine.js application — Visual Portfolio CMS
+ * Visual Portfolio CMS — backend Cloudflare Worker (cf-api.js)
+ * Base URL: meta reverso-cms-api (Jekyll preenche a partir de _config.yml).
  */
+function reversoCmsApiBase() {
+  const el = document.querySelector('meta[name="reverso-cms-api"]');
+  const v = el?.getAttribute('content')?.trim();
+  if (v) return v.replace(/\/$/, '');
+  return null;
+}
+
 const ADMIN_CONFIG = {
-  repo: 'gleal1609/site',
-  branch: 'temp',
   serviceTypes: ['VFX', 'ARTISTICOS', 'MIDIAS SOCIAIS', 'INSTITUCIONAL', 'EVENTOS'],
   sizeOptions: ['1x1', '1x2', '2x1', '2x2'],
 };
 
 function adminApp() {
   return {
-    /* ---- state ---- */
     authed: false,
     user: null,
-    patInput: '',
-    showPat: false,
 
     projects: [],
     loading: true,
@@ -35,64 +38,50 @@ function adminApp() {
     videoPreview: null,
 
     _mde: null,
-    _auth: new GitHubAuth(),
+    _auth: null,
     _api: null,
     _grid: null,
 
     toast: null,
 
-    /* ---- lifecycle ---- */
-
     async init() {
-      this._auth.init();
-      this.loading = false;
-    },
-
-    async _boot() {
-      try {
-        this._api = new GitHubAPI(
-          this._auth.token,
-          ADMIN_CONFIG.repo,
-          ADMIN_CONFIG.branch,
+      const apiBase = reversoCmsApiBase();
+      if (!apiBase) {
+        this.loading = false;
+        this._toast(
+          'Meta reverso-cms-api ausente ou vazia. Sirva o admin pelo Jekyll (build que processa admin/index.html).',
+          'error',
         );
-        this.user = await this._api.getUser();
+        return;
+      }
+      this._auth = new Auth(apiBase);
+      this._api = new CfAPI(apiBase);
+
+      const loginErr = this._auth.checkLoginError();
+      if (loginErr) {
+        this.loading = false;
+        this._toast(loginErr, 'error');
+        return;
+      }
+
+      const ok = await this._auth.checkSession(this._api);
+      if (ok) {
+        this.user = this._auth.user;
         this.authed = true;
         await this._loadProjects();
-      } catch (e) {
-        console.error(e);
-        this._auth.logout();
-        this.authed = false;
-        this._toast('Falha na autenticação: ' + e.message, 'error');
       }
       this.loading = false;
     },
 
-    /* ---- auth ---- */
-
-    async loginOAuth() {
-      try {
-        this.loading = true;
-        await this._auth.loginWithOAuth();
-        await this._boot();
-      } catch (e) {
-        this.loading = false;
-        this._toast(e.message, 'error');
-      }
+    loginOAuth() {
+      if (!this._auth) return;
+      this.loading = true;
+      this._auth.login();
     },
 
-    async loginPAT() {
-      try {
-        this._auth.loginWithPAT(this.patInput);
-        this.loading = true;
-        await this._boot();
-      } catch (e) {
-        this.loading = false;
-        this._toast(e.message, 'error');
-      }
-    },
-
-    logout() {
-      this._auth.logout();
+    async logout() {
+      if (!this._auth || !this._api) return;
+      await this._auth.logout(this._api);
       this.authed = false;
       this.user = null;
       this.projects = [];
@@ -101,30 +90,15 @@ function adminApp() {
       this._grid = null;
     },
 
-    /* ---- data loading ---- */
-
     async _loadProjects() {
+      if (!this._api) return;
       this.loading = true;
       try {
-        const files = await this._api.listDir('_projects');
-        const mdFiles = files.filter((f) => f.name.endsWith('.md'));
-
-        const results = await Promise.all(
-          mdFiles.map((f) => this._api.getFile(f.path).catch(() => null)),
-        );
-
-        this.projects = results.filter(Boolean).map((r) => {
-          const { data, body } = FrontMatter.parse(r.content);
-          const slug = r.path.replace('_projects/', '').replace('.md', '');
-          return {
-            ...data,
-            body,
-            _path: r.path,
-            _slug: slug,
-            url: `/projects/${slug}/`,
-          };
+        this.projects = await this._api.listProjects();
+        this.projects.forEach(p => {
+          p._slug = p.slug;
+          if (!p.url) p.url = `/projects/${p.slug}/`;
         });
-
         this.$nextTick(() => this._renderGrid());
       } catch (e) {
         console.error(e);
@@ -132,8 +106,6 @@ function adminApp() {
       }
       this.loading = false;
     },
-
-    /* ---- grid ---- */
 
     _renderGrid() {
       const container = document.getElementById('grid-container');
@@ -174,36 +146,27 @@ function adminApp() {
       if (!this.pendingCount) return;
       this.saving = true;
       try {
-        let saved = 0;
-        for (const item of this.pendingOrder) {
-          const proj = this.projects.find((p) => p._slug === item.slug);
-          if (!proj || proj.order === item.order) continue;
+        const items = this.pendingOrder
+          .filter(o => {
+            const p = this.projects.find(x => x._slug === o.slug);
+            return p && p.order !== o.order;
+          })
+          .map(o => ({ slug: o.slug, order: o.order }));
 
-          const file = await this._api.getFile(proj._path);
-          const { data, body } = FrontMatter.parse(file.content);
-          data.order = item.order;
-          const content = FrontMatter.serialize(data, body);
+        await this._api.reorderProjects(items);
 
-          await this._api.putFile(
-            proj._path,
-            content,
-            `Reorder: ${data.title || proj._slug} → #${item.order}`,
-          );
-          proj.order = item.order;
-          saved++;
-        }
+        items.forEach(item => {
+          const p = this.projects.find(x => x._slug === item.slug);
+          if (p) p.order = item.order;
+        });
 
-        if (saved) {
-          this.pendingOrder = [];
-          this._toast(`Ordem de ${saved} projeto(s) salva!`, 'success');
-        }
+        this.pendingOrder = [];
+        this._toast(`Ordem de ${items.length} projeto(s) salva!`, 'success');
       } catch (e) {
         this._toast('Erro ao salvar ordem: ' + e.message, 'error');
       }
       this.saving = false;
     },
-
-    /* ---- editor ---- */
 
     async openEditor(project) {
       this.isNew = false;
@@ -213,12 +176,10 @@ function adminApp() {
       this._clearUploads();
 
       try {
-        const file = await this._api.getFile(project._path);
-        const { data, body } = FrontMatter.parse(file.content);
+        const data = await this._api.getProject(project._slug);
         this.form = {
           ...data,
-          body: body || '',
-          _path: project._path,
+          body: data.body_md || '',
           _slug: project._slug,
         };
         if (!Array.isArray(this.form.service_types)) {
@@ -256,6 +217,7 @@ function adminApp() {
         home_size: '1x1',
         youtube_url: '',
         pixieset_url: '',
+        published: false,
         body: '',
       };
 
@@ -291,8 +253,6 @@ function adminApp() {
       this.form.home_size = size;
     },
 
-    /* ---- save / delete ---- */
-
     async saveProject() {
       if (!this.form.title) {
         this._toast('Título é obrigatório', 'error');
@@ -304,67 +264,69 @@ function adminApp() {
         if (this._mde) this.form.body = this._mde.value();
 
         const slug = this.isNew ? this._makeSlug() : this.form._slug;
-        const path = this.isNew ? `_projects/${slug}.md` : this.form._path;
 
         if (this.thumbFile) {
           MediaUpload.validate(this.thumbFile, MediaUpload.IMG_TYPES);
-          const thumbPath = MediaUpload.imgPath(this.thumbFile, slug);
-          await this._api.uploadMedia(thumbPath, this.thumbFile);
-          this.form.thumbnail = `/${thumbPath}`;
+          const result = await this._api.uploadMedia(slug, 'thumbnail', this.thumbFile);
+          this.form.thumbnail = result.key;
         }
 
         if (this.videoFile) {
           MediaUpload.validate(this.videoFile, MediaUpload.VID_TYPES);
-          const vidPath = MediaUpload.vidPath(this.videoFile, slug);
-          await this._api.uploadMedia(vidPath, this.videoFile);
-          this.form.hover_preview = `/${vidPath}`;
+          const result = await this._api.uploadMedia(slug, 'preview', this.videoFile);
+          this.form.hover_preview = result.key;
         }
 
-        const data = {};
-        const fields = [
-          'title', 'thumbnail', 'hover_preview', 'service_types', 'client',
-          'date_mmddyyyy', 'year', 'show_on_home', 'order', 'home_size',
-          'youtube_url', 'pixieset_url',
-        ];
-        fields.forEach((k) => {
-          if (this.form[k] !== undefined) data[k] = this.form[k];
-        });
+        const payload = {
+          title: this.form.title,
+          body_md: this.form.body || '',
+          service_types: this.form.service_types || [],
+          client: this.form.client || '',
+          date_mmddyyyy: this.form.date_mmddyyyy || '',
+          year: this.form.year ? Number(this.form.year) : null,
+          show_on_home: !!this.form.show_on_home,
+          order: this.form.order ? Number(this.form.order) : 0,
+          home_size: this.form.home_size || '1x1',
+          youtube_url: this.form.youtube_url || '',
+          pixieset_url: this.form.pixieset_url || '',
+          published: this.form.published !== undefined ? !!this.form.published : false,
+        };
 
-        if (data.year) data.year = Number(data.year);
-        if (data.order) data.order = Number(data.order);
-        data.show_on_home = !!data.show_on_home;
+        if (this.form.thumbnail) payload.thumbnail = this.form.thumbnail;
+        if (this.form.hover_preview) payload.hover_preview = this.form.hover_preview;
 
-        if (!data.hover_preview) delete data.hover_preview;
-        if (!data.youtube_url) delete data.youtube_url;
-        if (!data.pixieset_url) delete data.pixieset_url;
+        if (this.isNew) {
+          payload.slug = slug;
+          await this._api.createProject(payload);
+          this._toast('Projeto criado!', 'success');
+        } else {
+          payload.version = this.form.version;
+          const result = await this._api.updateProject(slug, payload);
+          if (result.triggerDeploy) {
+            this._api.triggerDeploy().catch(() => {});
+          }
+          this._toast('Projeto salvo!', 'success');
+        }
 
-        const body = this.form.body || '';
-        const content = FrontMatter.serialize(data, body);
-        const msg = this.isNew
-          ? `Add project: ${data.title}`
-          : `Update: ${data.title}`;
-
-        await this._api.putFile(path, content, msg);
-
-        this._toast(this.isNew ? 'Projeto criado!' : 'Projeto salvo!', 'success');
         this.closeEditor();
         await this._loadProjects();
       } catch (e) {
-        this._toast('Erro: ' + e.message, 'error');
+        if (e.message.includes('409') || e.message.includes('Conflict')) {
+          this._toast('Conflito: outro utilizador editou. Recarregue a página.', 'error');
+        } else {
+          this._toast('Erro: ' + e.message, 'error');
+        }
       }
       this.saving = false;
     },
 
     async deleteProject() {
-      if (!this.form._path) return;
+      if (!this.form._slug) return;
       if (!confirm(`Excluir "${this.form.title}"? Esta ação não pode ser desfeita.`)) return;
 
       this.saving = true;
       try {
-        await this._api.deleteFile(
-          this.form._path,
-          `Delete: ${this.form.title}`,
-        );
+        await this._api.deleteProject(this.form._slug);
         this._toast('Projeto excluído', 'success');
         this.closeEditor();
         await this._loadProjects();
@@ -373,8 +335,6 @@ function adminApp() {
       }
       this.saving = false;
     },
-
-    /* ---- media ---- */
 
     onThumbChange(e) {
       const file = e.target?.files?.[0];
@@ -409,8 +369,6 @@ function adminApp() {
       this.videoPreview = null;
     },
 
-    /* ---- markdown editor ---- */
-
     _initMDE() {
       this._destroyMDE();
       const el = document.getElementById('md-editor');
@@ -436,16 +394,16 @@ function adminApp() {
       }
     },
 
-    /* ---- helpers ---- */
-
     _makeSlug() {
       const d = this.form.date_mmddyyyy || '';
       const title = (this.form.title || 'projeto')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-zA-Z0-9]+/g, '');
+        .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')
+        .toLowerCase();
       const client = (this.form.client || 'cliente')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-zA-Z0-9]+/g, '');
+        .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')
+        .toLowerCase();
       return `${d}-${title}-${client}`;
     },
 

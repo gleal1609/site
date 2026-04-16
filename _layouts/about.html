@@ -85,13 +85,16 @@ layout: none
       <div class="about-content-wrapper">
         <h2 class="about-section-title">Serviços</h2>
         <div class="servicos-list">
+          {% assign all_projects = site.data.projects | default: site.projects %}
           {% assign service_types_set = "" | split: "," %}
-          {% for project in site.projects %}
-            {% for service_type in project.service_types %}
-              {% unless service_types_set contains service_type %}
-                {% assign service_types_set = service_types_set | push: service_type %}
-              {% endunless %}
-            {% endfor %}
+          {% for project in all_projects %}
+            {% if project.service_types %}
+              {% for service_type in project.service_types %}
+                {% unless service_types_set contains service_type %}
+                  {% assign service_types_set = service_types_set | push: service_type %}
+                {% endunless %}
+              {% endfor %}
+            {% endif %}
           {% endfor %}
           {% assign sorted_services = service_types_set | sort %}
           {% for service_type in sorted_services %}

@@ -1,0 +1,25 @@
+name = "reverso-cms-api"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "reverso-db"
+database_id = "26c7fa0e-675c-4693-a186-d0d8f8395f5e"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "reverso-media"
+
+# Weekday in CF cron is 1–7 (Mon=1, Sun=7); 0 is invalid.
+[triggers]
+crons = [ "0 3 * * 7", "0 4 * * *" ]
+
+[vars]
+MEDIA_BASE_URL = "https://media.reversofilmes.com.br"
+ADMIN_ORIGIN = "https://classy-nougat-5d062d.netlify.app/admin"
+SITE_ORIGIN = "https://classy-nougat-5d062d.netlify.app"
+ALLOWED_ORIGINS = "https://classy-nougat-5d062d.netlify.app,https://admin.reversofilmes.com.br,https://www.reversofilmes.com.br,https://reversofilmes.com.br"
+COOKIE_DOMAIN = ".reversofilmes.com.br"
+JWT_TTL_SECONDS = "28800"

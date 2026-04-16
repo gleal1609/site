@@ -2,7 +2,7 @@
 
 Este documento descreve a estrutura do projeto na branch **`temp`** (versão completa: masonry na home, listagem de projetos, páginas internas e navegação inferior). A branch **`main`** pode estar mais enxuta; para desenvolvimento alinhado ao site em staging, use **`temp`**.
 
-Inclui como rodar localmente, mapa de arquivos, fluxo de dados dos projetos e orientações para CMS / painel administrativo com foco em soluções **gratuitas e sustentáveis**.
+Inclui como rodar localmente, mapa de arquivos, fluxo de dados dos projetos, orientações para CMS / painel administrativo, **arquitetura do backend Cloudflare (D1 + R2 + Workers)** (implementado), segurança e procedimento de rollback.
 
 ---
 
@@ -35,6 +35,8 @@ bundle exec jekyll serve
 ```
 
 Abra **http://127.0.0.1:4000** (porta exibida no terminal). Use sempre `bundle exec` para respeitar o `Gemfile`.
+
+**Com `netlify.toml` e fetch no build:** antes de `jekyll build` ou `jekyll serve`, o fluxo espera `node scripts/fetch-projects.mjs` (como no Netlify). Para testar **só o site** sem Worker ainda, pode: (1) gerar dados uma vez com o Worker + `CF_BUILD_TOKEN` e manter `_data/projects.json`; ou (2) criar `_data/projects.json` com `[]` para home vazia; ou (3) temporariamente usar `bundle exec jekyll serve` **sem** o passo do Node (ignorando o comando do `netlify.toml` no terminal local).
 
 ### 1.4 Observações
 
@@ -70,11 +72,22 @@ site/
 │   ├── opengraph.html       # OG / Twitter
 │   ├── projects-grid.html   # Grid da home + lógica de hover em vídeo
 │   └── bottom-nav.html      # Barra inferior fixa (links internos e redes)
-├── _projects/               # Um arquivo .md por projeto (coleção Jekyll)
-├── admin/                   # Visual Portfolio CMS (SPA customizada) → copiado para _site/admin/
-│   ├── index.html           # SPA principal (Alpine.js + Packery + GitHub API)
+├── _projects/               # Arquivos .md legados (mantidos para rollback)
+├── _data/projects.json      # Gerado em build pelo fetch script (gitignored)
+├── _plugins/
+│   └── data_page_generator.rb  # Gera /projects/:slug/ a partir de _data/projects.json
+├── admin/                   # Visual Portfolio CMS (SPA) → consome Worker API
+│   ├── index.html           # SPA principal (Alpine.js + Packery)
 │   ├── config.yml           # Referência / fallback Sveltia CMS
-│   └── assets/              # CSS (tema escuro) e JS (auth, API, grid, editor)
+│   └── assets/              # CSS (tema escuro) e JS (auth, cf-api, grid, editor)
+├── cf-worker/               # Cloudflare Worker backend (D1 + R2)
+│   ├── wrangler.toml        # Bindings D1, R2, crons, env vars
+│   ├── migrations/          # Schema SQL versionado
+│   └── src/                 # Middleware, rotas, utils, crons
+├── scripts/
+│   ├── fetch-projects.mjs   # Build-time: fetch D1 → _data/projects.json
+│   └── import-projects.mjs  # One-shot: _projects/*.md → D1
+├── netlify.toml             # Config-as-code (build, headers CSP, security)
 ├── assets/
 │   ├── css/                 # main.css, bottom-nav.css
 │   ├── js/                  # intro, transições, masonry (Packery), página de projetos, nav
@@ -82,7 +95,7 @@ site/
 │   └── video/               # Previews para hover (idem)
 ├── index.markdown           # layout: home
 ├── projects.markdown        # permalink /projetos/ → layout projects
-├── projects.json            # Lista JSON de todos os projetos (para Alpine na página Projetos)
+├── projects.json            # Lista JSON (Liquid, usa site.data.projects || site.projects)
 ├── about.markdown           # /about/
 ├── curupire-se.md           # /curupire-se/
 ├── 404.html
@@ -103,7 +116,7 @@ site/
 | `/` | `index.markdown` → `_layouts/home.html` |
 | `/projetos/` | `projects.markdown` → `_layouts/projects.html` |
 | `/projects.json` | `projects.json` (Liquid gera JSON com todos os projetos) |
-| `/projects/<slug>/` | Arquivos em `_projects/*.md` |
+| `/projects/<slug>/` | Gerado por `_plugins/data_page_generator.rb` a partir de `_data/projects.json` (fallback: `_projects/*.md`) |
 | `/about/` | `about.markdown` |
 | `/curupire-se/` | `curupire-se.md` |
 
@@ -152,14 +165,13 @@ Arquivo Jekyll com `layout: null` e `permalink: /projects.json`. Gera um **array
 
 ## 3. CMS e painel administrativo (`/admin/`)
 
-O painel em **`/admin/`** é um **Visual Portfolio CMS** customizado — uma SPA (single-page application) que simula o grid masonry da home e permite **arrastar para reordenar**, **clicar para editar** todos os campos e **criar/excluir** projetos. O backend é **GitHub** direto (sem Git Gateway nem Netlify Identity). Em produção na **Netlify**, o login usa **GitHub OAuth** via **proxy OAuth da Netlify** (`https://api.netlify.com/auth/done`). O repositório configurado é **`gleal1609/site`** (ajustar em `admin/assets/js/admin-app.js` → `ADMIN_CONFIG.repo`); a branch de trabalho é **`temp`**.
+O painel em **`/admin/`** é um **Visual Portfolio CMS** customizado — uma SPA (single-page application) que simula o grid masonry da home e permite **arrastar para reordenar**, **clicar para editar** todos os campos e **criar/excluir** projetos. O backend é o **Cloudflare Worker** (`cms.reversofilmes.com.br`). Login usa **GitHub OAuth** via redirect completo ao Worker (que troca o código com GitHub e emite JWT em cookie httpOnly).
 
 **Stack do painel (zero build step, CDN):**
 - **Packery 2.1.2** + **Draggabilly 3.0.0** — grid masonry com drag-and-drop
 - **Alpine.js 3.14.9** — reatividade para formulários e estado
 - **EasyMDE 2.18.0** — editor Markdown para o campo `body`
-- **js-yaml 4.1.0** — parse/serialização de front matter YAML
-- **GitHub REST API** — leitura/escrita de arquivos, commits atômicos multi-arquivo
+- **Cloudflare Worker API** — CRUD, upload de mídia, autenticação, deploy hook
 
 **Estrutura de arquivos do painel:**
 ```
@@ -169,9 +181,9 @@ admin/
   assets/
     css/admin.css              ← tema escuro, layout, componentes
     js/
-      github-auth.js           ← OAuth popup + PAT fallback
-      github-api.js            ← wrapper GitHub API + FrontMatter helpers
-      media-upload.js           ← validação e upload de mídia
+      cf-api.js                ← cliente da Worker API (credentials: include, CSRF headers)
+      auth.js                  ← autenticação (redirect OAuth, check session, logout)
+      media-upload.js          ← validação client-side de mídia
       grid-manager.js          ← Packery + Draggabilly, lógica de reorder
       admin-app.js             ← orquestrador Alpine.js (editor, CRUD, estado)
 ```
@@ -181,57 +193,260 @@ admin/
 - **Dois modos**: "Home" (só `show_on_home: true`, masonry) e "Todos" (grid uniforme)
 - **Drag-and-drop**: arrastar cards para reordenar; a posição define `order` automaticamente
 - **Editor lateral**: todos os campos do front matter, upload de mídia, editor Markdown
-- **Commits atômicos**: reordenação salva todos os `.md` alterados em um único commit (Git Data API)
-- **Criar / Excluir** projetos direto pelo painel
+- **Reordenação em batch**: arrastar cards para reordenar; salva todas as posições via `POST /api/projects/reorder`
+- **Criar / Excluir** projetos com cleanup de mídia em R2
+- **Optimistic locking**: campo `version` em cada projeto; 409 Conflict se editado por outro utilizador
+- **Deploy hook**: dispara rebuild no Netlify após alterações em projetos publicados (debounce 5 min)
 
-### 3.1 Site estático e Git
+### 3.1 Fluxo de dados
 
-O Jekyll gera HTML estático. O painel grava **commits** no repositório via GitHub API (Markdown em `_projects/` e arquivos em `assets/img/projects/` e `assets/video/projects/`). O Netlify **rebuilda** no push. Não há banco de dados no site.
+O admin SPA consome a Worker API. Edições e uploads vão para D1 e R2 (sem tocar no repositório Git). Um deploy hook dispara rebuild no Netlify, que executa `scripts/fetch-projects.mjs` para buscar dados atualizados do Worker e gerar `_data/projects.json` para o Jekyll.
 
-### 3.2 Produção: OAuth GitHub + Netlify
+**Fonte de verdade:** em operação normal, o conteúdo editável do portfólio está em **D1** + mídia em **R2**; o site público no build usa só o export (`_data/projects.json`). Os ficheiros `_projects/*.md` no Git servem de **arquivo / rollback** até descontinuar explicitamente o modelo Markdown; import ou reidratação pode usar `scripts/import-projects.mjs`.
 
-1. **GitHub:** criar um **OAuth App** (organização ou conta da equipe) com **Callback URL** `https://api.netlify.com/auth/done` e **Homepage URL** do site (ex.: staging `https://temp.reversofilmes.com.br`).
-2. **Netlify:** Site settings → Access & security → OAuth → instalar o provedor **GitHub** com o **Client ID** e **Client Secret** do OAuth App. O **secret** fica só no painel Netlify, nunca no repositório.
-3. O painel detecta o hostname Netlify e usa o proxy OAuth automaticamente.
+### 3.2 Produção: OAuth GitHub via Worker
 
-**Quem publica:** cada pessoa precisa de **conta GitHub própria** (recomenda-se **2FA**) e ser **colaboradora** do repositório com permissão de escrita. Evite uma única conta compartilhada com senha repassada.
+1. **GitHub:** criar um **OAuth App** com **Callback URL** `https://cms.reversofilmes.com.br/api/auth/github/callback` e **Homepage URL** `https://admin.reversofilmes.com.br`.
+2. **Worker secrets:** `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` (via `wrangler secret`).
+3. O admin redireciona para `https://cms.reversofilmes.com.br/api/auth/github`; o Worker gera `state`, redireciona para GitHub, recebe callback, verifica allowlist, emite JWT em cookie httpOnly, redireciona para o admin.
 
-### 3.3 Desenvolvimento e demos: token (PAT)
+**Quem publica:** cada pessoa precisa de **conta GitHub própria** (recomenda-se **2FA**) e ter o `github_id` inserido na tabela `admin_allowlist` do D1.
 
-Quando o OAuth via Netlify não for prático (ex.: `localhost`), o painel oferece login por **Personal Access Token** (link "Usar token pessoal" na tela de login). Gere o token no GitHub com escopo `repo`, use **apenas em ambiente local**, **não commite** o token e **revogue** após testes.
+### 3.3 Staging em fork (Netlify `*.netlify.app` + Worker `*.workers.dev`)
 
-Para demonstração ao cliente, prefira uma **URL de staging na Netlify** (mesmo fluxo OAuth que produção).
+O fluxo **não** usa mais `https://api.netlify.com/auth/done` (isso era do CMS antigo via proxy Netlify). Com o Worker:
 
-### 3.4 Branch protection (GitHub — configurar manualmente)
+1. **GitHub → Settings → Developer settings → OAuth Apps**  
+   - **Homepage URL:** pode ser o site de staging, ex. `https://classy-nougat-5d062d.netlify.app`  
+   - **Authorization callback URL:** tem de ser **no Worker**, no formato  
+     `https://<nome-do-worker>.<subconta>.workers.dev/api/auth/github/callback`  
+     (o URL exato aparece no dashboard da Cloudflare após `wrangler deploy`, em Workers → o seu worker → domínio `*.workers.dev`).  
+   - Um OAuth App clássico só admite **uma** callback URL. Se ainda precisar do fluxo antigo Netlify noutro projeto, crie um **OAuth App separado** só para este CMS.
 
-- **`main`:** exigir PR antes do merge; bloquear force push e deleção da branch (ajuste conforme política da equipe).
-- **`temp`:** branch usada pelo painel com **commit direto** — **não** exigir PR aqui (bloquearia o fluxo). Bloquear force push e deleção da branch.
+2. **Variáveis do Worker** (dashboard Cloudflare ou `wrangler.toml` / env de deploy):  
+   - `ALLOWED_ORIGINS`: inclua `https://classy-nougat-5d062d.netlify.app` (e o URL do admin se for diferente).  
+   - `ADMIN_ORIGIN`: `https://classy-nougat-5d062d.netlify.app` (para onde o utilizador volta após login).  
+   - **`COOKIE_DOMAIN`:** deixe **vazio** (remova o valor ou use string vazia). Com admin em `netlify.app` e API em `workers.dev`, o cookie de sessão tem de ser `SameSite=None; Secure` no host do Worker (o código faz isso automaticamente quando `COOKIE_DOMAIN` está vazio).
 
-### 3.5 Validação de mídia (GitHub Actions)
+3. **`admin/index.html`:** ajuste a meta  
+   `<meta name="reverso-cms-api" content="https://…workers.dev" />`  
+   para o URL **exato** do Worker (sem barra no fim).
 
-O workflow **`.github/workflows/validate-uploads.yml`** roda em pushes/PRs que alteram `assets/img/projects/` ou `assets/video/projects/`: permite imagens `.jpg`, `.jpeg`, `.png`, `.webp`; vídeos `.mp4` e `.webm`; tamanho máximo **25MB** por arquivo. O painel também faz validação client-side antes do upload (mesmos tipos e limite de 25MB).
+4. **`netlify.toml` — CSP em `/admin/*`:** em `connect-src` tem de constar o **mesmo** URL do Worker (ex. `https://reverso-cms-api.xxx.workers.dev`), senão o browser bloqueia o `fetch`. Copie o valor da meta `reverso-cms-api`.
 
-### 3.6 Segurança e superfície
+5. **Netlify → Environment variables:** `WORKER_EXPORT_URL` deve apontar para `https://…workers.dev/api/projects/export` (mesmo host do Worker) enquanto não usar `cms.reversofilmes.com.br`.
 
-- **`/admin/`** é URL pública; a proteção é o **login GitHub**.
-- Ameaças comuns: phishing e sequestro de sessão — treinar quem usa o painel.
-- **CDN:** o `admin/index.html` pina versões fixas de todas as libs (Packery, Alpine, etc.) para reduzir risco de supply chain.
-- Token armazenado em `localStorage` (chave `reverso_admin_token`).
+Em produção no domínio do cliente, volte a: callback `https://cms…/api/auth/github/callback`, `COOKIE_DOMAIN=.reversofilmes.com.br`, `ADMIN_ORIGIN` e `ALLOWED_ORIGINS` oficiais, meta e CSP com `https://cms.reversofilmes.com.br`.
 
-### 3.7 Limitações e fallback Sveltia
+### 3.4 Desenvolvimento local (`wrangler dev`)
 
-- **Upload:** limite ~**25MB** por arquivo na API do GitHub; vídeos de hover devem ser curtos e otimizados.
-- **Slug de arquivo:** novos projetos seguem o padrão `MMDDYYYY-Titulo-Cliente.md`.
-- **Fallback Sveltia:** substituir o conteúdo de `admin/index.html` pelo script Sveltia (instrução no comentário HTML do arquivo). O `config.yml` permanece compatível.
-- **Edição concorrente:** se dois usuários editam ao mesmo tempo, o commit atômico falha ao detectar que a ref mudou — o painel pede reload.
+0. **Jekyll:** na **raiz do repositório** (pasta que contém `_config.yml` e `Gemfile`), não dentro de `cf-worker/`. Ex.: `cd …/site` e `bundle exec jekyll serve`. Se correr o comando estando em `cf-worker/`, o servidor mostra listagem de ficheiros do Worker em vez do site.
+1. `cd cf-worker && npx wrangler dev` — Worker em `http://127.0.0.1:8787`. Para usar **D1/R2 remotos** na conta Cloudflare: `npm run dev:remote`.
+2. **URL da API no admin:** controlada por `reverso_cms_api` em `_config.yml`. Para apontar o admin local para o Worker local, crie `_config.local.yml` (gitignored) com `reverso_cms_api: "http://127.0.0.1:8787"` e rode `bundle exec jekyll serve --config _config.yml,_config.local.yml`. Sem ficheiro local, o build usa o URL em `_config.yml` (ex. `*.workers.dev`).
+3. **CORS e cookie em `wrangler dev`:** o `wrangler.toml` traz `COOKIE_DOMAIN` de produção. Com o admin em `http://127.0.0.1:4000` e a API em `:8787`, em `.dev.vars` defina `COOKIE_DOMAIN=` (vazio), `ADMIN_ORIGIN=http://127.0.0.1:4000` e `DEV_ORIGINS=http://127.0.0.1:4000,http://localhost:4000` (ver `cf-worker/.dev.vars.example`).
+4. OAuth no GitHub: um OAuth App clássico só tem **uma** callback. Para login local, ou crie um **OAuth App separado** com callback `http://127.0.0.1:8787/api/auth/github/callback`, ou use só o deploy `*.workers.dev` até existir custom domain.
+
+### 3.5 Validação de mídia
+
+O Worker valida uploads: tipos permitidos (jpeg, png, webp, mp4, webm), tamanho máximo 25MB, path sanitization (sem `..` ou caracteres especiais). Keys em R2 são normalizados: `projects/{slug}/{tipo}-{hash8}.{ext}`. O painel também faz validação client-side antes do upload.
+
+### 3.6 Segurança do admin
+
+- **`/admin/`** é URL pública; a proteção é o **login GitHub OAuth** + **allowlist de github_id** no D1.
+- **Sessão**: JWT em cookie httpOnly/Secure/SameSite=Lax; nunca em localStorage.
+- **CSRF**: todas as mutações exigem header `X-Requested-With: fetch`.
+- **CSP**: configurado via `netlify.toml` para `/admin/*`.
+- **CDN:** o `admin/index.html` pina versões fixas de todas as libs para reduzir risco de supply chain.
+
+### 3.7 Limitações
+
+- **Upload:** limite **25MB** por arquivo; vídeos de hover devem ser curtos e comprimidos.
+- **Slug:** novos projetos devem usar o padrão `MMDDYYYY-titulo-cliente` em **minúsculas**; o Worker valida criação com `^[a-z0-9][a-z0-9-]{0,127}$`. Slugs de projetos **já importados** (ex. maiúsculas no ficheiro Markdown) continuam aceites em URLs e uploads via regra mais permissiva em `cf-worker/src/utils/slug.js` (`SLUG_PATH_RE`).
+- **Edição concorrente:** optimistic locking via campo `version` em PATCH — 409 Conflict se versão desatualizada. O **reorder** em lote (`POST /api/projects/reorder`) não usa `version`; dois editores a reordenar em simultâneo podem sobrepor ordens (aceite para MVP).
+- **Jekyll na pasta errada:** se correr `jekyll build`/`serve` dentro de `cf-worker/`, pode aparecer `cf-worker/_site` — apague essa pasta localmente (está coberta por `.gitignore` como `_site`); o site correto gera-se na raiz do repo.
 
 ### 3.8 O que o painel cobre
 
-Coleção **projects** (`_projects/`), thumbnails em **`/assets/img/projects`**, vídeo de hover em **`/assets/video/projects`**, campos alinhados ao front matter atual (incluindo corpo Markdown), **reordenação visual** da home e portfólio. Layouts, CSS, JS e `_config.yml` continuam no Git pela equipe técnica.
+Tabela **projects** em D1, mídia em R2 (`projects/{slug}/`), campos alinhados ao modelo de dados (incluindo corpo Markdown), **reordenação visual** da home e portfólio, toggle de publicação. Layouts, CSS, JS e `_config.yml` continuam no Git pela equipe técnica.
 
 ---
 
-## 4. Referências rápidas
+## 4. Backend Cloudflare — Arquitetura
+
+> **Status:** implementado — código em `cf-worker/`. Plano original em `.cursor/plans/backend_cms_migration_45b7ab64.plan.md`.
+
+### 4.1 Visão geral
+
+O backend migra do modelo "GitHub API direto" para **Cloudflare Workers** como API centralizada. O site público continua no **Netlify** (build Jekyll). O admin consome a API do Worker em vez de escrever diretamente no repositório Git.
+
+```
+Visitante → www.reversofilmes.com.br → Netlify (site estático Jekyll)
+Admin     → admin.reversofilmes.com.br → Netlify (SPA) → cms.reversofilmes.com.br (Worker API)
+Mídia     → media.reversofilmes.com.br → R2 (bucket público)
+Build     → Netlify build → fetch cms.reversofilmes.com.br/api/projects/export → _data/projects.json → Jekyll
+```
+
+### 4.2 Decisões arquiteturais
+
+**DA-1 — Domínios:**
+
+| Subdomínio | Função | Destino |
+|---|---|---|
+| `cms.reversofilmes.com.br` | API Worker (CMS) | Cloudflare Worker Custom Domain |
+| `admin.reversofilmes.com.br` | Admin SPA | Netlify (CNAME) |
+| `media.reversofilmes.com.br` | Mídia pública R2 | R2 public bucket custom domain |
+| `www.reversofilmes.com.br` / `@` | Site público | Netlify (sem alteração) |
+
+Admin e API sob o mesmo domínio registrável (`.reversofilmes.com.br`) permite cookies `SameSite=Lax` sem restrições de third-party.
+
+**DA-2 — Sessões: JWT + revogação**
+
+- JWT assinado com HMAC-SHA256 (`JWT_SECRET` no Worker), claims: `sub` (github_id), `jti` (UUID v4), `exp` (8 horas).
+- Cookie `__session`: `httpOnly; Secure; SameSite=Lax; Domain=.reversofilmes.com.br; Path=/; Max-Age=28800`.
+- Tabela `revoked_sessions(jti, revoked_at)` em D1 para logout/invalidação. Limpeza automática (Cron Trigger diário, entradas > 30 dias).
+
+**DA-3 — URLs de mídia: path relativo + base URL configurável**
+
+- D1 guarda apenas o path relativo: `projects/{slug}/thumbnail-{hash8}.jpg`.
+- Worker de export monta URL completa: `{MEDIA_BASE_URL}/{path}`.
+- Mudança de bucket = alterar `MEDIA_BASE_URL` no Worker; zero migração no D1.
+
+### 4.3 Modelo de dados (D1)
+
+Schema em `cf-worker/migrations/0001_initial.sql`. Tabelas:
+
+| Tabela | Função |
+|---|---|
+| `projects` | Conteúdo de portfolio (slug, título, mídia, metadados, `version` para optimistic locking) |
+| `admin_allowlist` | GitHub IDs autorizados a usar o CMS |
+| `revoked_sessions` | JTIs de sessões revogadas (logout) |
+| `audit_log` | Registro de todas as mutações (quem, o quê, quando) |
+| `login_attempts` | Rate limiting de login por IP |
+| `deploy_log` | Debounce do deploy hook Netlify |
+
+### 4.4 Componentes do Worker (API)
+
+| Rota | Método | Auth | Função |
+|---|---|---|---|
+| `/health` | GET | — | Health check (D1 `SELECT 1`) |
+| `/api/projects/export` | GET | BUILD_TOKEN | Export publicados (para build Netlify) |
+| `/api/projects` | GET | JWT | Listar todos (admin) |
+| `/api/projects/:slug` | GET/POST/PATCH/DELETE | JWT | CRUD com optimistic locking |
+| `/api/upload` | POST | JWT | Upload mídia → R2 |
+| `/api/auth/github` | GET | — | Iniciar OAuth (gerar state) |
+| `/api/auth/github/callback` | GET | — | Callback OAuth (validar state, criar JWT) |
+| `/api/auth/logout` | POST | JWT | Revogar sessão (inserir jti) |
+| `/api/deploy` | POST | JWT | Disparar deploy hook (com debounce 5 min) |
+
+**Middleware stack (resumo):** CORS → (rate limit em rotas de auth) → JWT → revogação + allowlist em todas as rotas com sessão → `GET` públicos autenticados → CSRF nas mutações → validação → handler → audit log (async via `waitUntil`).
+
+---
+
+## 5. Segurança
+
+### 5.1 Camadas de proteção
+
+1. **Borda Cloudflare** (hostname `cms.*`): SSL Full, Bot Fight Mode, Rate Limiting Rules (5 req/min/IP em auth e upload), WAF custom rules.
+2. **Worker**: CSRF via header custom, OAuth state anti-CSRF, JWT com exp/jti, allowlist e revogação também em `GET` autenticados, validação de input por rota (slug novo: `^[a-z0-9][a-z0-9-]{0,127}$`; paths legados: `SLUG_PATH_RE` em `utils/slug.js`), optimistic locking em updates.
+3. **R2**: uploads só via Worker autenticado, keys normalizados (`projects/{slug}/{tipo}-{hash8}.{ext}`), sem input direto do utilizador, cleanup ao eliminar projeto.
+4. **D1**: só via binding Worker, queries parametrizadas, audit log.
+5. **CI (Netlify build)**: BUILD_TOKEN (JWT com scope `read:export`, exp 1 ano), nunca no Git, retry + fallback no fetch script.
+6. **Admin SPA**: CSP via `netlify.toml`, security headers globais (X-Frame-Options, X-Content-Type-Options, Referrer-Policy), sem localStorage para tokens.
+
+### 5.2 Checklist de segurança (antes de produção)
+
+- [ ] CSRF: header `X-Requested-With: fetch` validado em mutações
+- [ ] OAuth: parâmetro `state` gerado + validado no callback
+- [ ] Sessão: JWT com `exp` 8h, `jti`, HMAC-SHA256; cookie httpOnly/Secure/SameSite=Lax
+- [ ] Logout: revoga `jti` em `revoked_sessions`
+- [ ] D1: queries parametrizadas; audit_log ativo
+- [ ] R2: uploads autenticados; keys normalizados; bucket não listável; cleanup
+- [ ] BUILD_TOKEN: JWT com exp e scope; só env var Netlify
+- [ ] Allowlist: populada antes de ativar OAuth
+- [ ] CORS: origens explícitas; nunca `*` com credenciais
+- [ ] Input: validação de schema em todas as rotas
+- [ ] Uploads: max 25MB + MIME allowlist + path sanitization
+- [ ] CSP: configurado no admin
+- [ ] Deploy hook: debounce 5 min no Worker
+- [ ] Rate limiting: borda CF + D1 em auth
+- [ ] Optimistic locking: campo `version` + 409 Conflict
+- [ ] Monitoring: /health, alertas CF, backups semanais em R2
+
+---
+
+## 6. Variáveis de ambiente e secrets
+
+### 6.1 Worker (Cloudflare — via `wrangler secret` ou dashboard)
+
+| Variável | Descrição |
+|---|---|
+| `GITHUB_CLIENT_ID` | Client ID do GitHub OAuth App |
+| `GITHUB_CLIENT_SECRET` | Client Secret do GitHub OAuth App |
+| `JWT_SECRET` | Chave HMAC-SHA256 para assinar JWTs (min 32 bytes) |
+| `NETLIFY_DEPLOY_HOOK_URL` | URL do deploy hook Netlify (POST para disparar build) |
+| `BUILD_TOKEN` | JWT pré-assinado com scope `read:export` (para CI ler export) |
+| `MEDIA_BASE_URL` | URL base para montar URLs de mídia (ex.: `https://media.reversofilmes.com.br`) |
+| `SKIP_AUTH_RATE_LIMIT` | Opcional: defina `1` em `.dev.vars` local quando `CF-Connecting-IP` for `unknown` (ex. `wrangler dev`) para não acumular tentativas de login sob o mesmo IP sintético. |
+
+### 6.2 Netlify (painel Netlify — nunca no repositório)
+
+| Variável | Descrição |
+|---|---|
+| `WORKER_EXPORT_URL` | URL do endpoint de export (ex.: `https://cms.reversofilmes.com.br/api/projects/export`) |
+| `CF_BUILD_TOKEN` | Mesmo valor de `BUILD_TOKEN` do Worker |
+
+### 6.3 Rotação de secrets
+
+- **JWT_SECRET:** gerar novo; todas as sessões existentes ficam inválidas (logout forçado). Recriar BUILD_TOKEN com novo secret.
+- **BUILD_TOKEN:** gerar novo JWT com o JWT_SECRET atual; atualizar env var no Worker e Netlify.
+- **GITHUB_CLIENT_SECRET:** regenerar no GitHub; atualizar no Worker.
+- **NETLIFY_DEPLOY_HOOK_URL:** recriar no Netlify; atualizar no Worker.
+
+---
+
+## 7. Procedimento de rollback (backend → Git-based)
+
+Se a migração para Cloudflare falhar ou precisar ser revertida:
+
+### 7.1 Pré-condição
+
+Os arquivos `_projects/*.md` devem estar preservados no repositório (mantidos durante o período de coexistência de 2 semanas).
+
+### 7.2 Passos
+
+1. **`netlify.toml`:** reverter o build command para `bundle exec jekyll build` (remover `node scripts/fetch-projects.mjs &&`).
+2. **Templates Liquid:** reverter referências de `site.data.projects` para `site.projects` (coleção Jekyll original).
+3. **Admin:** o fluxo antigo “GitHub API direto no browser” (`github-api.js` / `github-auth.js`) foi **removido** do repositório em favor de `cf-api.js` + `auth.js` (Worker). Para rollback desse painel, recupere os ficheiros antigos do histórico Git e restaure as tags `<script>` em `admin/index.html` conforme versão anterior.
+4. **Push e rebuild:** o Netlify volta a usar a coleção `_projects/` diretamente.
+5. **DNS:** remover registos `cms`, `admin`, `media` se desejado (opcional — não afetam o site).
+
+### 7.3 Dados
+
+Se houver projetos criados/editados apenas no D1 (não sincronizados para `_projects/`), exportar do D1 antes do rollback:
+
+```bash
+# Exportar do Worker
+curl -H "Authorization: Bearer $BUILD_TOKEN" \
+  https://cms.reversofilmes.com.br/api/projects/export > projects-backup.json
+
+# Converter para .md (script a ser escrito se necessário)
+```
+
+---
+
+## 8. Alternativa em stand-by: Supabase
+
+**Não faz parte do plano de execução atual.** Documentado como referência para decisão futura.
+
+**Supabase** oferece: Postgres com RLS, Storage para mídia, Auth GitHub nativo, Edge Functions ou webhooks. O padrão "snapshot no build + deploy hook Netlify" mantém-se análogo ao do Cloudflare.
+
+**Quando considerar:** se a equipa preferir menos código de autorização customizado, aceitar o modelo de quotas do plano free (pausa após inatividade) ou migrar para plano pago, e quiser interface SQL completa para queries.
+
+**Migração Cloudflare → Supabase:** exportar tabela `projects` de D1, importar em Postgres; migrar mídia de R2 para Supabase Storage; ajustar Worker para Edge Function; manter deploy hook e fetch script com URLs atualizadas.
+
+---
+
+## 9. Referências rápidas
 
 - Jekyll: https://jekyllrb.com/docs/
 - Coleções: https://jekyllrb.com/docs/collections/
@@ -239,7 +454,110 @@ Coleção **projects** (`_projects/`), thumbnails em **`/assets/img/projects`**,
 - Decap CMS (alternativa): https://decapcms.org/docs/
 - Tema Minima: https://github.com/jekyll/minima
 - Packery (masonry): https://packery.metafizzy.co/
+- Cloudflare Workers: https://developers.cloudflare.com/workers/
+- Cloudflare D1: https://developers.cloudflare.com/d1/
+- Cloudflare R2: https://developers.cloudflare.com/r2/
+- Wrangler CLI: https://developers.cloudflare.com/workers/wrangler/
+- Supabase: https://supabase.com/docs
 
 ---
 
-*Documento atualizado para a branch **`temp`**. Ajuste `url` em `_config.yml` conforme ambiente (local, staging, produção).*
+## 10. Setup do backend (primeira vez)
+
+### 10.1 Cloudflare
+
+1. Após `wrangler d1 create reverso-db`, copie o **database id** para `cf-worker/wrangler.toml` (substitua `REPLACE_WITH_D1_DATABASE_ID`).
+2. Para desenvolvimento local: `cp cf-worker/.dev.vars.example cf-worker/.dev.vars` e preencha os valores (o Wrangler carrega `.dev.vars` automaticamente em `wrangler dev`).
+
+```bash
+cd cf-worker
+npm install
+wrangler login
+
+# Criar D1 e R2 — atualizar database_id em wrangler.toml
+wrangler d1 create reverso-db
+wrangler r2 bucket create reverso-media
+
+# Aplicar schema
+wrangler d1 migrations apply reverso-db --remote
+
+# Secrets
+wrangler secret put GITHUB_CLIENT_ID
+wrangler secret put GITHUB_CLIENT_SECRET
+wrangler secret put JWT_SECRET
+wrangler secret put NETLIFY_DEPLOY_HOOK_URL
+wrangler secret put BUILD_TOKEN
+wrangler secret put MEDIA_BASE_URL
+
+# Popular allowlist
+wrangler d1 execute reverso-db --remote \
+  --command "INSERT INTO admin_allowlist (github_id, name) VALUES ('YOUR_GITHUB_ID', 'Admin Name')"
+
+# Deploy
+wrangler deploy
+```
+
+### 10.2 DNS
+
+Criar registos para `cms`, `admin`, `media` sob `reversofilmes.com.br` (ver secção 4.2 DA-1).
+
+### 10.3 Netlify
+
+**Deploy hook (`NETLIFY_DEPLOY_HOOK_URL`):**
+
+1. Netlify → o seu site (ex. staging) → **Configuration** → **Build & deploy** → **Build hooks** → **Add build hook**.
+2. Dê um nome (ex. `cms-rebuild`) e escolha a branch a construir.
+3. Copie o URL gerado (começa por `https://api.netlify.com/build_hooks/...`). Esse é o valor de `NETLIFY_DEPLOY_HOOK_URL` no Worker (`wrangler secret put` ou `.dev.vars`). Um `POST` nesse URL dispara um build; o Worker já faz debounce (máx. 1 por 5 min).
+
+**Variáveis de ambiente do site (build):**
+
+- `CF_BUILD_TOKEN` — o mesmo JWT gerado com `cf-worker/scripts/generate-build-token.mjs` (ou o valor guardado em `BUILD_TOKEN`).
+- `WORKER_EXPORT_URL` — em produção: `https://cms.reversofilmes.com.br/api/projects/export`; em staging com Worker em `*.workers.dev`: `https://SEU-WORKER.workers.dev/api/projects/export`.
+
+**Gerar de novo o `BUILD_TOKEN` (atalho `npm run token:build`):**
+
+Na pasta **`cf-worker`**, o `package.json` define o script `token:build`, que corre o mesmo gerador. O **segredo tem de estar na variável de ambiente** `JWT_SECRET` **no momento em que o npm corre** (não fica guardado no `package.json`).
+
+Exemplos (Git Bash):
+
+```bash
+cd cf-worker
+export JWT_SECRET="o_mesmo_hex_que_definiu_para_o_worker"
+npm run token:build
+```
+
+PowerShell:
+
+```powershell
+cd cf-worker
+$env:JWT_SECRET="o_mesmo_hex_que_definiu_para_o_worker"
+npm run token:build
+```
+
+O comando imprime uma linha longa (JWT): use em `BUILD_TOKEN` / `CF_BUILD_TOKEN` e em `wrangler secret put BUILD_TOKEN`.
+
+### 10.4 Migração de dados
+
+```bash
+# Dry run
+node scripts/import-projects.mjs --dry-run
+
+# Executar (com Worker remoto)
+WORKER_URL=https://cms.reversofilmes.com.br AUTH_TOKEN=<jwt> node scripts/import-projects.mjs
+```
+
+### 10.5 Testes locais
+
+```bash
+# Terminal 1: Worker
+cd cf-worker && wrangler dev
+
+# Terminal 2: Fetch + Jekyll
+WORKER_EXPORT_URL=http://127.0.0.1:8787/api/projects/export \
+CF_BUILD_TOKEN=<dev-token> \
+node scripts/fetch-projects.mjs && bundle exec jekyll serve
+```
+
+---
+
+*Documento atualizado para a branch **`temp`**. Ajuste `url` em `_config.yml` conforme ambiente (local, staging, produção). Plano de migração backend em `.cursor/plans/backend_cms_migration_45b7ab64.plan.md`.*

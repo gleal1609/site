@@ -1,4 +1,5 @@
-{% assign home_projects = site.projects | where: "show_on_home", true %}
+{% assign all_projects = site.data.projects | default: site.projects %}
+{% assign home_projects = all_projects | where: "show_on_home", true %}
 {% comment %} Primary sort: order (CMS). Tie-break: date (newest first). {% endcomment %}
 {% assign sorted_projects = home_projects | sort: "date_mmddyyyy" | reverse %}
 {% assign sorted_projects = sorted_projects | sort: "order" %}
@@ -6,7 +7,12 @@
 <div id="masonry-container" class="masonry-container">
   <div class="projects-grid" data-total-projects="{{ sorted_projects.size }}">
     {% for project in sorted_projects %}
-      <a href="{{ project.url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-order="{{ project.order | default: 999 }}">
+      {% if project.url %}
+        {% assign proj_url = project.url %}
+      {% else %}
+        {% assign proj_url = project.slug | prepend: "/projects/" | append: "/" %}
+      {% endif %}
+      <a href="{{ proj_url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-order="{{ project.order | default: 999 }}">
       <div class="project-thumbnail-container">
         {% if project.hover_preview %}
           <video 

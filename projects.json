@@ -3,8 +3,9 @@ layout: null
 permalink: /projects.json
 ---
 [
-{% for project in site.projects %}
-  {% capture search_blob %}{{ project.title | downcase }} {{ project.client | downcase }} {{ project.service_types | join: " " | downcase }}{% endcapture %}
+{% assign all_projects = site.data.projects | default: site.projects %}
+{% for project in all_projects %}
+  {% capture search_blob %}{{ project.title | downcase }} {{ project.client | downcase }} {% if project.service_types %}{{ project.service_types | join: " " | downcase }}{% endif %}{% endcapture %}
   {
     "title": {{ project.title | jsonify }},
     "thumbnail": {{ project.thumbnail | jsonify }},
@@ -18,7 +19,7 @@ permalink: /projects.json
     "home_size": {% if project.home_size %}{{ project.home_size | jsonify }}{% else %}"1x1"{% endif %},
     "pixieset_url": {% if project.pixieset_url %}{{ project.pixieset_url | jsonify }}{% else %}null{% endif %},
     "youtube_url": {% if project.youtube_url %}{{ project.youtube_url | jsonify }}{% else %}null{% endif %},
-    "url": {{ project.url | jsonify }},
+    "url": {% if project.url %}{{ project.url | jsonify }}{% else %}{{ project.slug | prepend: "/projects/" | append: "/" | jsonify }}{% endif %},
     "search_blob": {{ search_blob | strip | jsonify }}
   }{% unless forloop.last %},{% endunless %}
 {% endfor %}

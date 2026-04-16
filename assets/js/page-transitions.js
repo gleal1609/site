@@ -20,8 +20,41 @@
   var DURATION = 0.5;
   var isTransitioning = false;
   var initialFadeInDone = false;
+  var INTRO_DONE_KEY = 'reverso_home_intro_done';
 
   /* ── helpers ─────────────────────────────────────────────────────── */
+
+  function homePathname() {
+    var el = document.querySelector('a.bottom-nav-item-center');
+    if (!el || !el.href) return '/';
+    try {
+      return new URL(el.href, window.location.origin).pathname;
+    } catch (_) {
+      return '/';
+    }
+  }
+
+  function normalizePathname(path) {
+    if (!path || path === '/') return '/';
+    var p = String(path).replace(/\/index\.html?$/i, '');
+    if (p.length > 1) p = p.replace(/\/+$/, '');
+    return p === '' ? '/' : p;
+  }
+
+  function isInternalHomeUrl(href) {
+    try {
+      var u = new URL(href, window.location.origin);
+      return normalizePathname(u.pathname) === normalizePathname(homePathname());
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function markHomeIntroDoneForNextLoad() {
+    try {
+      sessionStorage.setItem(INTRO_DONE_KEY, '1');
+    } catch (_) {}
+  }
 
   function contentElements() {
     return Array.from(document.querySelectorAll(CONTENT_SEL)).filter(function (el) {
@@ -126,6 +159,9 @@
 
     fadeOut()
       .then(function () {
+        if (isInternalHomeUrl(link.href)) {
+          markHomeIntroDoneForNextLoad();
+        }
         window.location.href = link.href;
       })
       .catch(function () {

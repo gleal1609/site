@@ -6,3 +6,11 @@ _site
 vendor/bundle/
 Gemfile.lock
 testsprite_tests/
+_data/projects.json
+_config.local.yml
+cf-worker/node_modules/
+cf-worker/.wrangler/
+cf-worker/.dev.vars
+cf-worker/_site/
+DOCUMENTACAO.md
+MIGRACAO_CONTAS_CLIENTE.md

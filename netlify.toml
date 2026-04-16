@@ -1,0 +1,22 @@
+[build]
+  command = "node scripts/fetch-projects.mjs && bundle exec jekyll build"
+  publish = "_site"
+
+[build.environment]
+  RUBY_VERSION = "3.3.0"
+  # Mesmo host que site.reverso_cms_api + /api/projects/export. Com custom domain cms.*, alinhar meta + CSP abaixo.
+  WORKER_EXPORT_URL = "https://reverso-cms-api.reverso-cms.workers.dev/api/projects/export"
+
+[[headers]]
+  for = "/admin/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self' cdn.jsdelivr.net; style-src 'self' cdn.jsdelivr.net 'unsafe-inline'; connect-src https://reverso-cms-api.reverso-cms.workers.dev; img-src 'self' https://media.reversofilmes.com.br data:; media-src https://media.reversofilmes.com.br"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

@@ -44,8 +44,9 @@ layout: none
     <!-- Thumbnail Image -->
     {% if page.thumbnail %}
       <section class="project-thumbnail-section">
+        {% assign _t = page.thumbnail | strip %}
         <img 
-          src="{{ page.thumbnail | relative_url }}" 
+          src="{% if _t contains '://' %}{{ _t }}{% else %}{{ _t | relative_url }}{% endif %}" 
           alt="{{ page.title }}"
           class="project-thumbnail-image"
           loading="eager"
