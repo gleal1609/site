@@ -10,7 +10,23 @@ function reversoCmsApiBase() {
 }
 
 const ADMIN_CONFIG = {
-  serviceTypes: ['VFX', 'ARTISTICOS', 'MIDIAS SOCIAIS', 'INSTITUCIONAL', 'EVENTOS'],
+  serviceTypes: [
+    'EFEITOS VISUAIS',
+    'ANIMAÇÃO & MOTION GRAPHICS',
+    'FESTIVAIS & EVENTOS',
+    'INSTITUCIONAL',
+    'EVENTO CORPORATIVO',
+    'PUBLICITÁRIO',
+    'ARTE & CULTURA',
+    'MAKING OF',
+    'DOCUMENTÁRIO',
+    'MOBILE',
+    'FOTOS',
+    'VFX',
+    'ARTISTICOS',
+    'MIDIAS SOCIAIS',
+    'EVENTOS',
+  ],
   sizeOptions: ['1x1', '1x2', '2x1', '2x2'],
 };
 
@@ -184,6 +200,7 @@ function adminApp() {
         this.form = {
           ...data,
           body: data.body_md || '',
+          description: data.description || '',
           _slug: project._slug,
         };
         if (!Array.isArray(this.form.service_types)) {
@@ -223,6 +240,7 @@ function adminApp() {
         pixieset_url: '',
         published: false,
         body: '',
+        description: '',
       };
 
       this.$nextTick(() => {
@@ -284,6 +302,7 @@ function adminApp() {
         const payload = {
           title: this.form.title,
           body_md: this.form.body || '',
+          description: (this.form.description || '').trim() || null,
           service_types: this.form.service_types || [],
           client: this.form.client || '',
           date_mmddyyyy: this.form.date_mmddyyyy || '',
@@ -382,6 +401,7 @@ function adminApp() {
         initialValue: this.form.body || '',
         spellChecker: false,
         status: false,
+        autoDownloadFontAwesome: false,
         minHeight: '120px',
         toolbar: [
           'bold', 'italic', 'heading', '|',

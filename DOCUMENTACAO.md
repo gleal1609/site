@@ -86,7 +86,8 @@ site/
 │   └── src/                 # Middleware, rotas, utils, crons
 ├── scripts/
 │   ├── fetch-projects.mjs   # Build-time: fetch D1 → _data/projects.json
-│   └── import-projects.mjs  # One-shot: _projects/*.md → D1
+│   ├── import-projects.mjs  # One-shot: _projects/*.md → D1
+│   └── import-projects-sheet.mjs  # Planilha TSV/CSV → D1 (export Google Sheets)
 ├── netlify.toml             # Config-as-code (build, headers CSP, security)
 ├── assets/
 │   ├── css/                 # main.css, bottom-nav.css
@@ -203,6 +204,8 @@ admin/
 O admin SPA consome a Worker API. Edições e uploads vão para D1 e R2 (sem tocar no repositório Git). Um deploy hook dispara rebuild no Netlify, que executa `scripts/fetch-projects.mjs` para buscar dados atualizados do Worker e gerar `_data/projects.json` para o Jekyll.
 
 **Fonte de verdade:** em operação normal, o conteúdo editável do portfólio está em **D1** + mídia em **R2**; o site público no build usa só o export (`_data/projects.json`). Os ficheiros `_projects/*.md` no Git servem de **arquivo / rollback** até descontinuar explicitamente o modelo Markdown; import ou reidratação pode usar `scripts/import-projects.mjs`.
+
+**`_projects/*.md` e D1 não sincronizam sozinhos.** Cada alteração no Git nos `.md` **não** atualiza a base D1. Para alinhar o admin (que lê sempre o Worker/D1), execute `node scripts/import-projects.mjs` com `WORKER_URL` e `AUTH_TOKEN` (cookie `__session` após login), ou crie/edite só pelo admin. No Jekyll, se `_data/projects.json` existir mas for um array **vazio** `[]`, o filtro Liquid `default` **não** substitui por `site.projects`; os includes usam fallback explícito (`size == 0` → coleção `_projects/`). **Descompasso:** se o export no Netlify falhar e `fetch-projects.mjs` reutilizar **cache** antigo, o site pode listar projetos antigos com o D1 já vazio ou diferente — o admin reflete só o D1. Nesse caso limpe o cache de build no Netlify e garanta `CF_BUILD_TOKEN` + export 200.
 
 ### 3.2 Produção: OAuth GitHub via Worker
 
@@ -544,7 +547,16 @@ node scripts/import-projects.mjs --dry-run
 
 # Executar (com Worker remoto)
 WORKER_URL=https://cms.reversofilmes.com.br AUTH_TOKEN=<jwt> node scripts/import-projects.mjs
+
+# Planilha (Google Sheets → Transferir → .tsv UTF-8 recomendado; .csv ainda suportado)
+# Por omissão usa `_projects/projects_sheet.tsv`.
+SHEET_PATH=_projects/projects_sheet.tsv WORKER_URL=https://…workers.dev AUTH_TOKEN=<jwt> node scripts/import-projects-sheet.mjs
+node scripts/import-projects-sheet.mjs --dry-run
 ```
+
+**`AUTH_TOKEN` não vem de `.dev.vars`.** São coisas diferentes: `.dev.vars` / secrets do Worker são para o servidor (`JWT_SECRET`, OAuth, `BUILD_TOKEN`, etc.). O import precisa do **JWT da tua sessão** depois de login no admin (o mesmo valor gravado no cookie HttpOnly `__session`). Como é HttpOnly, o JavaScript da página não o lê; em DevTools use **Rede** → um pedido `fetch` ao host do Worker (ex. `cms.reversofilmes.com.br`) → cabeçalhos do pedido → copie só o token após `__session=`. Em **Cookies**, filtre pelo **mesmo host do Worker** (não só o domínio do site estático no Netlify). Os scripts enviam `Authorization: Bearer` e `Cookie: __session` com esse JWT.
+
+Colunas suportadas: ver comentário no topo de `scripts/import-projects-sheet.mjs`.
 
 ### 10.5 Testes locais
 

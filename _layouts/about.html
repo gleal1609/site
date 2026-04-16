@@ -85,7 +85,10 @@ layout: none
       <div class="about-content-wrapper">
         <h2 class="about-section-title">Serviços</h2>
         <div class="servicos-list">
-          {% assign all_projects = site.data.projects | default: site.projects %}
+          {% assign all_projects = site.data.projects %}
+          {% if all_projects == nil or all_projects.size == 0 %}
+            {% assign all_projects = site.projects %}
+          {% endif %}
           {% assign service_types_set = "" | split: "," %}
           {% for project in all_projects %}
             {% if project.service_types %}

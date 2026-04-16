@@ -4,7 +4,17 @@ import { SLUG_RE, SLUG_PATH_RE } from '../utils/slug.js';
 
 const MAX_TITLE = 200;
 const MAX_BODY = 102400;
+const MAX_DESCRIPTION = 32000;
 const MAX_REORDER_ITEMS = 500;
+
+/** URL absoluta (http/https) ou chave R2 sob MEDIA_BASE_URL. */
+function mediaPublicUrl(base, keyOrUrl) {
+  if (keyOrUrl == null || keyOrUrl === '') return null;
+  const s = String(keyOrUrl);
+  if (s.includes('://')) return s;
+  const b = (base || '').replace(/\/$/, '');
+  return b ? `${b}/${s}` : s;
+}
 
 /** DB column → array; invalid JSON → [] + log (admin/export stay usable). */
 function parseServiceTypes(value) {
@@ -26,6 +36,9 @@ function validate(data, isCreate) {
   if (data.slug && !SLUG_RE.test(data.slug)) errs.push('invalid slug format (use lowercase letters, digits, hyphens)');
   if (data.title && data.title.length > MAX_TITLE) errs.push(`title max ${MAX_TITLE} chars`);
   if (data.body_md && data.body_md.length > MAX_BODY) errs.push(`body_md max ${MAX_BODY / 1024}KB`);
+  if (data.description != null && String(data.description).length > MAX_DESCRIPTION) {
+    errs.push(`description max ${MAX_DESCRIPTION} chars`);
+  }
   if (data.year !== undefined && data.year !== null && !Number.isInteger(data.year)) errs.push('year must be integer');
   if (data.order !== undefined && data.order !== null && !Number.isInteger(data.order)) errs.push('order must be integer');
   if (data.service_types !== undefined && data.service_types !== null && !Array.isArray(data.service_types)) {
@@ -36,7 +49,7 @@ function validate(data, isCreate) {
 
 export async function handleExport(env) {
   const { results } = await env.DB.prepare(
-    `SELECT slug, title, body_md, thumbnail, hover_preview, service_types,
+    `SELECT slug, title, body_md, description, thumbnail, hover_preview, service_types,
             client, date_mmddyyyy, year, show_on_home, "order", home_size,
             youtube_url, pixieset_url
      FROM projects WHERE published = 1
@@ -48,8 +61,8 @@ export async function handleExport(env) {
     ...r,
     service_types: parseServiceTypes(r.service_types),
     show_on_home: !!r.show_on_home,
-    thumbnail: r.thumbnail ? `${base}/${r.thumbnail}` : null,
-    hover_preview: r.hover_preview ? `${base}/${r.hover_preview}` : null,
+    thumbnail: mediaPublicUrl(base, r.thumbnail),
+    hover_preview: mediaPublicUrl(base, r.hover_preview),
     url: `/projects/${r.slug}/`,
   }));
 
@@ -60,7 +73,7 @@ export async function handleList(env) {
   const { results } = await env.DB.prepare(
     `SELECT id, slug, title, thumbnail, hover_preview, service_types,
             client, date_mmddyyyy, year, show_on_home, "order", home_size,
-            youtube_url, pixieset_url, published, version, body_md,
+            youtube_url, pixieset_url, published, version, body_md, description,
             created_at, updated_at
      FROM projects ORDER BY "order" ASC`,
   ).all();
@@ -71,8 +84,8 @@ export async function handleList(env) {
     service_types: parseServiceTypes(r.service_types),
     show_on_home: !!r.show_on_home,
     published: !!r.published,
-    thumbnail: r.thumbnail ? `${base}/${r.thumbnail}` : null,
-    hover_preview: r.hover_preview ? `${base}/${r.hover_preview}` : null,
+    thumbnail: mediaPublicUrl(base, r.thumbnail),
+    hover_preview: mediaPublicUrl(base, r.hover_preview),
     url: `/projects/${r.slug}/`,
   }));
 
@@ -93,8 +106,8 @@ export async function handleGet(slug, env) {
     service_types: parseServiceTypes(row.service_types),
     show_on_home: !!row.show_on_home,
     published: !!row.published,
-    thumbnail: row.thumbnail ? `${base}/${row.thumbnail}` : null,
-    hover_preview: row.hover_preview ? `${base}/${row.hover_preview}` : null,
+    thumbnail: mediaPublicUrl(base, row.thumbnail),
+    hover_preview: mediaPublicUrl(base, row.hover_preview),
   });
 }
 
@@ -113,12 +126,13 @@ export async function handleCreate(request, env, ctx) {
     : '[]';
 
   await env.DB.prepare(
-    `INSERT INTO projects (slug, title, body_md, thumbnail, hover_preview,
+    `INSERT INTO projects (slug, title, body_md, description, thumbnail, hover_preview,
       service_types, client, date_mmddyyyy, year, show_on_home, "order",
       home_size, youtube_url, pixieset_url, published)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     data.slug, data.title, data.body_md || null,
+    data.description != null ? String(data.description) : null,
     data.thumbnail || null, data.hover_preview || null,
     svcJson, data.client || null, data.date_mmddyyyy || null,
     data.year || null, data.show_on_home ? 1 : 0,
@@ -154,7 +168,7 @@ export async function handleUpdate(slug, request, env, ctx) {
   const fields = [];
   const values = [];
   const updatable = [
-    'title', 'body_md', 'thumbnail', 'hover_preview', 'client',
+    'title', 'body_md', 'description', 'thumbnail', 'hover_preview', 'client',
     'date_mmddyyyy', 'year', 'show_on_home', 'order', 'home_size',
     'youtube_url', 'pixieset_url', 'published',
   ];

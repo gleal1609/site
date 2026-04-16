@@ -1,6 +1,6 @@
 /**
  * Migração: _projects/*.md → D1 via Worker (POST /api/projects).
- * AUTH_TOKEN: valor do cookie __session (JWT) após login no admin contra o Worker.
+ * AUTH_TOKEN: JWT da sessão (cookie HttpOnly __session ou o mesmo valor noutro sítio). Ver import-projects-sheet.mjs.
  */
 import { readFileSync, readdirSync } from 'fs';
 import { join, dirname, basename } from 'path';
@@ -12,7 +12,13 @@ const PROJECTS_DIR = join(ROOT, '_projects');
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const WORKER_URL = (process.env.WORKER_URL || 'http://127.0.0.1:8787').replace(/\/$/, '');
-const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
+
+function normalizeSessionJwt(raw) {
+  let t = String(raw || '').trim();
+  if (t.toLowerCase().startsWith('bearer ')) t = t.slice(7).trim();
+  return t;
+}
+const AUTH_TOKEN = normalizeSessionJwt(process.env.AUTH_TOKEN || '');
 
 function parseFrontMatter(content) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
@@ -80,6 +86,7 @@ async function importProject(data, body, slug) {
     headers: {
       'Content-Type': 'application/json',
       'X-Requested-With': 'fetch',
+      Authorization: `Bearer ${AUTH_TOKEN}`,
       Cookie: `__session=${AUTH_TOKEN}`,
     },
     body: JSON.stringify(payload),

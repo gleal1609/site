@@ -12,5 +12,6 @@ cf-worker/node_modules/
 cf-worker/.wrangler/
 cf-worker/.dev.vars
 cf-worker/_site/
+cf-worker/migrations/
 DOCUMENTACAO.md
 MIGRACAO_CONTAS_CLIENTE.md

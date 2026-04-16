@@ -33,8 +33,7 @@ class GridManager {
 
       const thumb = p.thumbnail || '';
       card.innerHTML = `
-        <img src="${thumb}" alt="" class="gc-img" loading="lazy"
-             onerror="this.style.display='none'" />
+        <img src="${escAttr(thumb)}" alt="" class="gc-img" loading="lazy" />
         <div class="gc-info">
           <span class="gc-title">${esc(p.title)}</span>
           <span class="gc-client">${esc(p.client)}</span>
@@ -50,6 +49,13 @@ class GridManager {
         if (e.target.closest('.gc-handle')) return;
         this._onClick?.(p);
       });
+
+      const imgEl = card.querySelector('.gc-img');
+      if (imgEl) {
+        imgEl.addEventListener('error', () => {
+          imgEl.style.display = 'none';
+        });
+      }
 
       this.el.appendChild(card);
     });
@@ -149,4 +155,13 @@ function esc(s) {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
+}
+
+/** Atributo src seguro + CSP-friendly (sem handler inline). */
+function escAttr(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
 }

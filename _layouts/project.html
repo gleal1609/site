@@ -41,6 +41,14 @@ layout: none
       {% endif %}
     </header>
 
+    {% if page.description and page.description != "" %}
+      <section class="project-description-section">
+        <div class="project-description-inner markdown-body">
+          {{ page.description | markdownify }}
+        </div>
+      </section>
+    {% endif %}
+
     <!-- Thumbnail Image -->
     {% if page.thumbnail %}
       <section class="project-thumbnail-section">

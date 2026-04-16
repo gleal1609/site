@@ -3,11 +3,15 @@ layout: null
 permalink: /projects.json
 ---
 [
-{% assign all_projects = site.data.projects | default: site.projects %}
+{% assign all_projects = site.data.projects %}
+{% if all_projects == nil or all_projects.size == 0 %}
+  {% assign all_projects = site.projects %}
+{% endif %}
 {% for project in all_projects %}
-  {% capture search_blob %}{{ project.title | downcase }} {{ project.client | downcase }} {% if project.service_types %}{{ project.service_types | join: " " | downcase }}{% endif %}{% endcapture %}
+  {% capture search_blob %}{{ project.title | downcase }} {{ project.client | downcase }} {% if project.description %}{{ project.description | strip_html | downcase }} {% endif %}{% if project.service_types %}{{ project.service_types | join: " " | downcase }}{% endif %}{% endcapture %}
   {
     "title": {{ project.title | jsonify }},
+    "description": {% if project.description %}{{ project.description | jsonify }}{% else %}null{% endif %},
     "thumbnail": {{ project.thumbnail | jsonify }},
     "hover_preview": {% if project.hover_preview %}{{ project.hover_preview | jsonify }}{% else %}null{% endif %},
     "service_types": {{ project.service_types | jsonify }},

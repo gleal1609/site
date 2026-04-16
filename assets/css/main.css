@@ -1357,6 +1357,24 @@ a:hover::after {
   transform: translateY(-2px);
 }
 
+.project-description-section {
+  max-width: 900px;
+  margin: 0 auto 2rem;
+  padding: 0 2rem;
+  text-align: left;
+}
+
+.project-description-inner {
+  font-family: 'Poppins', sans-serif;
+  font-size: 1rem;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.project-description-inner p {
+  margin: 0 0 0.75rem;
+}
+
 /* Thumbnail Section */
 .project-thumbnail-section {
   width: 100%;

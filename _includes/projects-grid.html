@@ -1,4 +1,8 @@
-{% assign all_projects = site.data.projects | default: site.projects %}
+{% comment %} site.data.projects: export D1 em build. O filtro default do Liquid NÃO substitui array vazio []. {% endcomment %}
+{% assign all_projects = site.data.projects %}
+{% if all_projects == nil or all_projects.size == 0 %}
+  {% assign all_projects = site.projects %}
+{% endif %}
 {% assign home_projects = all_projects | where: "show_on_home", true %}
 {% comment %} Primary sort: order (CMS). Tie-break: date (newest first). {% endcomment %}
 {% assign sorted_projects = home_projects | sort: "date_mmddyyyy" | reverse %}

@@ -70,12 +70,18 @@ async function main() {
 
   if (CACHE_PATH && existsSync(CACHE_PATH)) {
     console.warn(`[fetch-projects] Using cached ${CACHE_PATH}`);
+    console.warn(
+      '[fetch-projects] O site pode ficar com lista antiga enquanto o D1/Worker já mudou; o admin lê só o D1. Limpe cache no Netlify ou corrija o export.',
+    );
     copyFileSync(CACHE_PATH, OUTPUT);
     return;
   }
 
   if (existsSync(OUTPUT)) {
     console.warn(`[fetch-projects] Using existing ${OUTPUT}`);
+    console.warn(
+      '[fetch-projects] Ficheiro local antigo: alinhe com o Worker (deploy com export OK) ou importe para o D1.',
+    );
     return;
   }
 
