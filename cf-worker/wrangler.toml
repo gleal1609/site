@@ -25,3 +25,5 @@ ALLOWED_ORIGINS = "https://classy-nougat-5d062d.netlify.app,https://admin.revers
 # Com admin e API no mesmo registrável (ex. admin.* + cms.* em reversofilmes.com.br), defina no dashboard da CF: COOKIE_DOMAIN=.reversofilmes.com.br
 COOKIE_DOMAIN = ""
 JWT_TTL_SECONDS = "28800"
+# false = cookie __session sem Max-Age (sessão do browser); ao fechar o browser perde-se o login. Não força novo pedido de senha no GitHub se já estiver logado lá.
+PERSIST_SESSION_COOKIE = "false"

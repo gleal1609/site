@@ -94,12 +94,22 @@
       <div class="grid-area">
         <div id="grid-container" class="grid-container"></div>
 
-        <!-- Empty state -->
+        <!-- Empty state: sem projetos na API -->
         <div x-show="!loading && projects.length === 0" class="empty-state">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
           </svg>
-          <p>Nenhum projeto encontrado.</p>
+          <p>Nenhum projeto cadastrado.</p>
+          <p class="empty-state-hint">Crie um com «+ Novo Projeto» ou importe dados para o D1 (ver documentação do projeto).</p>
+        </div>
+
+        <!-- Empty state: aba Home sem itens com Mostrar na Home -->
+        <div x-show="!loading && projects.length > 0 && view === 'home' && homeProjectCount === 0" class="empty-state">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+          </svg>
+          <p>Nenhum projeto na Home.</p>
+          <p class="empty-state-hint">A aba «Home» só lista projetos com «Mostrar na Home». Use «Todos» ou edite um projeto e marque essa opção.</p>
         </div>
 
         <!-- Pending order save bar -->

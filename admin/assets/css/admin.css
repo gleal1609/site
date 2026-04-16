@@ -505,6 +505,10 @@ input, textarea, select { font: inherit; }
 }
 .empty-state svg { width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.4; }
 .empty-state p { font-size: 0.9rem; }
+.empty-state .empty-state-hint {
+  margin-top: 0.5rem; max-width: 22rem;
+  font-size: 0.8rem; color: var(--text-2); line-height: 1.45;
+}
 
 /* ---- responsive ---- */
 

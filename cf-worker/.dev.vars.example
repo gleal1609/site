@@ -13,3 +13,5 @@ JWT_SECRET=
 NETLIFY_DEPLOY_HOOK_URL=
 BUILD_TOKEN=
 MEDIA_BASE_URL=https://media.reversofilmes.com.br
+# Opcional: false = cookie de sessão do browser (sem Max-Age). Ver wrangler.toml [vars].
+# PERSIST_SESSION_COOKIE=false

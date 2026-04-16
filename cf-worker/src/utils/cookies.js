@@ -15,11 +15,20 @@ function sessionSameSite(env) {
   return domain ? 'Lax' : 'None';
 }
 
+/** Max-Age em segundos, ou null = cookie de sessão do browser (sem Max-Age). */
+function sessionCookieMaxAge(env) {
+  const raw = (env.PERSIST_SESSION_COOKIE ?? 'true').toString().trim().toLowerCase();
+  if (raw === 'false' || raw === '0' || raw === 'no') return null;
+  const ttl = parseInt(env.JWT_TTL_SECONDS, 10);
+  return Number.isFinite(ttl) && ttl > 0 ? ttl : 28800;
+}
+
 export function sessionCookie(token, env) {
-  const ttl = parseInt(env.JWT_TTL_SECONDS) || 28800;
   const domain = (env.COOKIE_DOMAIN || '').trim();
   const sameSite = sessionSameSite(env);
-  let cookie = `__session=${token}; HttpOnly; Secure; SameSite=${sameSite}; Path=/; Max-Age=${ttl}`;
+  const maxAge = sessionCookieMaxAge(env);
+  let cookie = `__session=${token}; HttpOnly; Secure; SameSite=${sameSite}; Path=/`;
+  if (maxAge != null) cookie += `; Max-Age=${maxAge}`;
   if (domain) cookie += `; Domain=${domain}`;
   return cookie;
 }

@@ -135,6 +135,10 @@ function adminApp() {
       return this.pendingOrder.length > 0;
     },
 
+    get homeProjectCount() {
+      return this.projects.filter((p) => p.show_on_home).length;
+    },
+
     get pendingCount() {
       return this.pendingOrder.filter((o) => {
         const p = this.projects.find((x) => x._slug === o.slug);
