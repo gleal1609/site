@@ -2,14 +2,13 @@
  * Visual masonry grid with drag-and-drop reordering.
  * Uses Packery for layout and Draggabilly for drag interaction.
  *
- * Nota: NÃO usamos `packery.bindDraggabillyEvents()` — essa API recalcula o layout
- * a cada movimento (`shift` + `layout`), puxando todos os cartões para encaixar e
- * causando sobreposição com o cartão em arraste. Em vez disso, só o item arrastado
- * move durante o drag; no fim reordenamos os nós no DOM e fazemos um único `layout()`.
+ * Integração oficial: `packery.bindDraggabillyEvents(d)` — durante o arraste o Packery
+ * recalcula os outros itens (shift). Para suavizar:
+ * - `transitionDuration` fica a `0` enquanto arrasta (menos animação em cadeia);
+ * - repõe-se após `dragItemPositioned` (fim do layout pós-solta).
  *
- * O Packery empacota da esquerda para a direita e de cima para baixo. Não existe
- * «posição livre» arbitrária na margem direita: o espaço vazio à direita na última
- * fila é normal quando a soma das larguras dos blocos não enche a grelha.
+ * Colunas: usa-se `Math.floor(largura / alvo)` em vez de `Math.round` para o número de
+ * colunas, evitando uma coluna extra muito estreita e uma faixa vazia persistente à direita.
  */
 class GridManager {
   constructor(container) {
@@ -19,9 +18,12 @@ class GridManager {
     this._onReorder = null;
     this._onClick = null;
     this.gutter = 6;
+    /** Largura-alvo por célula (px); floor(largura/alvo) define n.º de colunas */
+    this._colTargetPx = 200;
     this._mode = 'home';
     this._resizeTimer = null;
     this._boundResize = this._onWindowResize.bind(this);
+    this._boundDragItemPositioned = this._onDragItemPositioned.bind(this);
   }
 
   /**
@@ -90,114 +92,51 @@ class GridManager {
       this._sizeCard(c, col, row);
     });
 
+    this._transitionNormal = '0.2s';
+
     this.pckry = new Packery(this.el, {
       itemSelector: '.gc',
       gutter: this.gutter,
       columnWidth: col,
       rowHeight: row,
       percentPosition: false,
-      transitionDuration: '0.25s',
+      transitionDuration: this._transitionNormal,
     });
+
+    this.pckry.on('dragItemPositioned', this._boundDragItemPositioned);
 
     this.drags = [];
     this.el.querySelectorAll('.gc').forEach((c) => {
-      const draggie = new Draggabilly(c, { handle: '.gc-handle' });
-      draggie.on('dragStart', () => {
+      const d = new Draggabilly(c, { handle: '.gc-handle' });
+      d.on('dragStart', () => {
         c.classList.add('is-dragging');
+        if (this.pckry) {
+          this.pckry.options.transitionDuration = '0';
+        }
       });
-      draggie.on('dragEnd', (event) => {
-        c.classList.remove('is-dragging');
-        this._onManualDragEnd(c, event);
-      });
-      this.drags.push(draggie);
+      this.pckry.bindDraggabillyEvents(d);
+      this.drags.push(d);
     });
   }
 
-  /**
-   * Coordenadas do ponteiro no fim do arraste (rato ou toque).
-   * @param {Event} event
-   */
-  _pointerCoords(event) {
-    if (!event) return null;
-    const e = event;
-    if (e.changedTouches && e.changedTouches[0]) {
-      return {
-        x: e.changedTouches[0].clientX,
-        y: e.changedTouches[0].clientY,
-      };
-    }
-    if (typeof e.clientX === 'number' && typeof e.clientY === 'number') {
-      return { x: e.clientX, y: e.clientY };
-    }
-    return null;
-  }
-
-  /**
-   * Reordena o DOM com base no cartão sob o ponteiro e recalcula o masonry uma vez.
-   */
-  _onManualDragEnd(dragged, event) {
-    if (!this.pckry) return;
-
-    const pt = this._pointerCoords(event);
-    if (!pt) {
-      this.pckry.reloadItems();
-      this.pckry.layout();
-      this._emitOrder();
-      return;
-    }
-
-    dragged.style.pointerEvents = 'none';
-    dragged.style.visibility = 'hidden';
-    let under = document.elementFromPoint(pt.x, pt.y);
-    dragged.style.pointerEvents = '';
-    dragged.style.visibility = '';
-
-    let dropTarget = under && under.closest ? under.closest('.gc') : null;
-    if (dropTarget && !this.el.contains(dropTarget)) {
-      dropTarget = null;
-    }
-
-    if (dropTarget && dropTarget !== dragged) {
-      this._insertDraggedNearTarget(dragged, dropTarget, pt);
-    }
-
-    this.pckry.reloadItems();
-    this.pckry.layout();
-    this._emitOrder();
-  }
-
-  /**
-   * Insere o cartão arrastado antes ou depois do alvo, conforme o quadrante do ponteiro.
-   * Usa o eixo (horizontal vs vertical) em que o ponteiro está mais deslocado em relação
-   * ao centro — melhora trocas na mesma coluna e na mesma linha em grelhas 2D.
-   */
-  _insertDraggedNearTarget(dragged, target, pt) {
-    const r = target.getBoundingClientRect();
-    const midX = r.left + r.width / 2;
-    const midY = r.top + r.height / 2;
-    const dx = Math.abs(pt.x - midX);
-    const dy = Math.abs(pt.y - midY);
-
-    let insertBefore;
-    if (dy >= dx) {
-      insertBefore = pt.y < midY;
-    } else {
-      insertBefore = pt.x < midX;
-    }
-
-    if (insertBefore) {
-      this.el.insertBefore(dragged, target);
-    } else if (target.nextSibling) {
-      this.el.insertBefore(dragged, target.nextSibling);
-    } else {
-      this.el.appendChild(dragged);
+  _onDragItemPositioned() {
+    const el = this.el.querySelector('.gc.is-dragging');
+    if (el) el.classList.remove('is-dragging');
+    if (this.pckry) {
+      this.pckry.options.transitionDuration = this._transitionNormal;
     }
   }
 
+  /**
+   * N.º de colunas: floor(w / alvo) em vez de round(w / 210) para não forçar uma
+   * coluna extra quando a largura está logo abaixo do limiar — caso típico de «coluna
+   * vazia» à direita com células demasiado estreitas.
+   */
   _calcCol() {
     const w = this.el.clientWidth;
     if (w <= 0) return { col: 100, row: 100 };
-    const n = Math.max(2, Math.round(w / 210));
+    const target = this._colTargetPx;
+    const n = Math.max(2, Math.floor(w / target));
     const col = Math.floor((w - (n - 1) * this.gutter) / n);
     return { col, row: col };
   }
@@ -249,6 +188,9 @@ class GridManager {
   destroy() {
     window.removeEventListener('resize', this._boundResize);
     clearTimeout(this._resizeTimer);
+    if (this.pckry) {
+      this.pckry.off('dragItemPositioned', this._boundDragItemPositioned);
+    }
     this.drags.forEach((d) => d.destroy());
     this.drags = [];
     if (this.pckry) {
