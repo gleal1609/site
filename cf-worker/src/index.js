@@ -12,6 +12,8 @@ import {
   handleDelete,
   handleReorder,
   handleBackfillYoutubeThumbnails,
+  handleMediaKeysSync,
+  handleYoutubeManifest,
 } from './routes/projects.js';
 import { handleUpload } from './routes/upload.js';
 import { handleDeploy } from './routes/deploy.js';
@@ -95,10 +97,22 @@ async function route(request, env, ctx, path) {
     return handleExport(env);
   }
 
+  if (path === '/api/projects/youtube-manifest' && method === 'GET') {
+    const authErr = await buildTokenAuth(request, env);
+    if (authErr) return authErr;
+    return handleYoutubeManifest(env);
+  }
+
   if (path === '/api/projects/backfill-youtube-thumbnails' && method === 'POST') {
     const authErr = await buildTokenAuth(request, env);
     if (authErr) return authErr;
     return handleBackfillYoutubeThumbnails(env);
+  }
+
+  if (path === '/api/projects/media-keys' && method === 'POST') {
+    const authErr = await buildTokenAuth(request, env);
+    if (authErr) return authErr;
+    return handleMediaKeysSync(request, env, ctx);
   }
 
   const authErr = await authMiddleware(request, env, ctx);

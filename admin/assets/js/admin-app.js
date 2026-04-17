@@ -335,15 +335,14 @@ function adminApp() {
 
         if (this.isNew) {
           payload.slug = slug;
-          await this._api.createProject(payload);
+          const result = await this._api.createProject(payload);
           this._toast('Projeto criado!', 'success');
+          await this._maybeTriggerDeploy(result);
         } else {
           payload.version = this.form.version;
           const result = await this._api.updateProject(slug, payload);
-          if (result.triggerDeploy) {
-            this._api.triggerDeploy().catch(() => {});
-          }
           this._toast('Projeto salvo!', 'success');
+          await this._maybeTriggerDeploy(result);
         }
 
         this.closeEditor();
@@ -430,6 +429,21 @@ function adminApp() {
       if (this._mde) {
         this._mde.toTextArea();
         this._mde = null;
+      }
+    },
+
+    async _maybeTriggerDeploy(result) {
+      if (!result?.triggerDeploy) return;
+      try {
+        const deployRes = await this._api.triggerDeploy();
+        if (deployRes?.skipped) {
+          this._toast(
+            deployRes.message || 'Deploy no Netlify adiado (debounce de 5 min).',
+            'warning',
+          );
+        }
+      } catch (e) {
+        this._toast('Deploy no Netlify falhou: ' + e.message, 'error');
       }
     },
 

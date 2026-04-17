@@ -169,7 +169,10 @@ export async function handleCreate(request, env, ctx) {
     diff: { title: data.title },
   });
 
-  return json({ slug: data.slug, created: true }, 201);
+  return json(
+    { slug: data.slug, created: true, triggerDeploy: !!data.published },
+    201,
+  );
 }
 
 export async function handleUpdate(slug, request, env, ctx) {
@@ -368,4 +371,52 @@ export async function handleBackfillYoutubeThumbnails(env) {
     ingested,
     failed,
   });
+}
+
+/**
+ * Atualiza só thumbnail + hover_preview no D1 (chaves R2), após upload feito fora do Worker
+ * (script local: yt-dlp + FFmpeg → R2). Auth: mesmo token de build do export.
+ */
+export async function handleMediaKeysSync(request, env, ctx) {
+  const data = await request.json().catch(() => ({}));
+  if (!data.slug || typeof data.slug !== 'string') return error('slug required', 400);
+  if (!SLUG_PATH_RE.test(data.slug)) return error('invalid slug', 400);
+  if (typeof data.thumbnail !== 'string' || !data.thumbnail.startsWith('projects/')) {
+    return error('thumbnail must be an R2 key starting with projects/', 400);
+  }
+  if (typeof data.hover_preview !== 'string' || !data.hover_preview.startsWith('projects/')) {
+    return error('hover_preview must be an R2 key starting with projects/', 400);
+  }
+
+  const row = await env.DB.prepare('SELECT slug FROM projects WHERE slug = ?')
+    .bind(data.slug)
+    .first();
+  if (!row) return error('Project not found', 404);
+
+  await env.DB.prepare(
+    `UPDATE projects SET thumbnail = ?, hover_preview = ?, updated_at = datetime('now'),
+     version = version + 1 WHERE slug = ?`,
+  )
+    .bind(data.thumbnail, data.hover_preview, data.slug)
+    .run();
+
+  logAudit(ctx, env.DB, {
+    action: 'media_keys_sync',
+    targetType: 'project',
+    targetId: data.slug,
+    diff: { thumbnail: data.thumbnail, hover_preview: data.hover_preview },
+  });
+
+  return json({ ok: true, slug: data.slug });
+}
+
+/** Lista slug + youtube_url para scripts locais (ingest em lote). Auth: token de build. */
+export async function handleYoutubeManifest(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT slug, youtube_url FROM projects
+     WHERE TRIM(COALESCE(youtube_url, '')) != ''
+     ORDER BY "order" ASC`,
+  ).all();
+
+  return json({ projects: results });
 }

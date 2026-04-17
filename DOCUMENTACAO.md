@@ -249,14 +249,80 @@ Resposta JSON: `candidates`, `ingested`, `failed` (slugs em que o download ao Yo
 - **`assets/css/main.css`:** `.project-thumbnail` e `.project-hover-video` usam `object-fit: cover`; para tamanhos **1×1, 2×1 e 2×2** usa-se `object-position: center 22%` para favorecer a zona central típica de capas verticais em moldura larga; **1×2** mantém `center`.
 - **Texto:** título e cliente com `-webkit-line-clamp` (mais restritivo em **1×1**).
 
-#### Evolução: processamento de imagem / vídeo (roadmap)
+#### Miniaturas e hover a partir do YouTube (1.º frame + 5 s de vídeo)
 
-Para **recorte** automático ao centro 9:16, normalização por `home_size`, ou **preview** de vídeo gerado a partir de ficheiro, o fluxo atual (JPEG estática + MP4/WebM em R2) pode ser estendido com:
+As JPEG do CDN do YouTube (`img.youtube.com`) para Shorts costumam ser **composições 16:9** (faixa 9:16 ao centro + laterais), não um recorte limpo do vídeo. Para **poster = 1.º frame real** e **hover = primeiros 5 s** (sem a arte do YouTube), o processamento tem de usar **yt-dlp + FFmpeg** fora do Worker.
+
+**Curto prazo (máquina local / demo):** script `scripts/ingest-youtube-media.mjs`.
+
+1. **Pré-requisitos:** [yt-dlp](https://github.com/yt-dlp/yt-dlp) e [FFmpeg](https://ffmpeg.org/) no `PATH`.
+2. **Uma vez:** `cd scripts && npm install` (instala `@aws-sdk/client-s3` para upload compatível com a API S3 do R2).
+3. **Credenciais R2:** no painel Cloudflare → R2 → **Manage R2 API Tokens** — criar token com permissão de leitura/escrita em objetos; obter também o **Account ID** (`R2_ACCOUNT_ID`).
+4. **Variáveis de ambiente** (PowerShell exemplo):
+
+```powershell
+$env:R2_ACCOUNT_ID = "<Account ID>"
+$env:R2_ACCESS_KEY_ID = "<Access Key ID>"
+$env:R2_SECRET_ACCESS_KEY = "<Secret Access Key>"
+$env:R2_BUCKET = "reverso-media"
+$env:WORKER_API_BASE = "https://<worker>.<subconta>.workers.dev"
+$env:CF_BUILD_TOKEN = "<BUILD_TOKEN ou JWT read:export>"
+```
+
+5. **Deploy do Worker** com a rota `GET /api/projects/youtube-manifest` (lista `slug` + `youtube_url` para todos os projetos com URL; auth: mesmo token de build).
+
+6. **Executar** (na raiz do repositório):
+
+**Um projeto:**
+
+```powershell
+node scripts/ingest-youtube-media.mjs "<slug-do-projeto-no-D1>" "https://youtube.com/shorts/VIDEO_ID"
+```
+
+**Todos os projetos que têm `youtube_url` no D1** (processa em sequência; pausa configurável entre cada um):
+
+```powershell
+$env:INGEST_DELAY_MS = "4000"
+node scripts/ingest-youtube-media.mjs --all
+```
+
+O script obtém a lista com `GET …/api/projects/youtube-manifest` (`Authorization: Bearer` + `CF_BUILD_TOKEN`). Em caso de falha num projeto, regista o erro e continua nos seguintes; no fim mostra resumo (OK / falhas). `INGEST_DELAY_MS` (ms, default 4000) reduz picos contra o YouTube; use `0` para desativar a pausa (não recomendado em lotes grandes).
+
+O fluxo por projeto: descarrega o melhor MP4 disponível com yt-dlp → FFmpeg extrai **1 frame** (`yt-poster.jpg`) e **5 s sem áudio** (`hover-5s.mp4`) → envia para o R2 em `projects/<slug>/` → chama **`POST /api/projects/media-keys`** no Worker para atualizar `thumbnail` e `hover_preview` no D1 e incrementar `version`.
+
+Depois: `node scripts/fetch-projects.mjs` + deploy do site (ou build local).
+
+**Ficheiros gerados (chaves R2):**
+
+| Campo | Chave |
+|-------|--------|
+| `thumbnail` | `projects/<slug>/yt-poster.jpg` |
+| `hover_preview` | `projects/<slug>/hover-5s.mp4` |
+
+**Nota legal / operacional:** usar apenas para vídeos em que o cliente tenha direitos; respeitar os termos do YouTube e políticas da conta.
+
+---
+
+**A) Pipeline assíncrono com FFmpeg + yt-dlp (recomendado para controlo total em produção)**
+
+| | |
+|--|--|
+| **Onde correr** | VM barata (Hetzner, etc.), **GitHub Actions** (`ubuntu-latest` com FFmpeg + yt-dlp), Railway/Render job, Cloud Run, etc. |
+| **Fluxo típico** | Input: `youtube_url` + `slug`. Descarregar stream com yt-dlp. **Thumbnail:** `ffmpeg -ss 0 -i … -vframes 1 -q:v 85` → R2 `projects/{slug}/yt-poster.jpg`. **Hover:** `ffmpeg -t 5 -an -c:v libx264 -preset fast -crf 23 -movflags +faststart` → `projects/{slug}/hover-5s.mp4`. Notificar D1 (mesmo endpoint `POST /api/projects/media-keys` ou fila + Worker). |
+| **Prós** | Qualidade real (1.º frame real, clip curto otimizado), repetível em CI. |
+| **Contras** | Infra extra, filas/retries, timeouts em jobs longos; GitHub Actions tem limite de minutos. |
+| **Encaixe** | R2 + Worker já existem; falta agendar o job (webhook no push, cron, ou botão no admin numa fase seguinte). |
+
+---
+
+#### Evolução adicional: recorte fino e variantes
+
+Para **recorte** automático ao centro 9:16, variantes por `home_size`, ou **WebP** gerado em lote, o fluxo pode estender-se com:
 
 - **Cloudflare Images** (resize/crop via URL) — custo / limites do plano; ou
-- **Worker + WASM** (ex. Squoosh) para JPEG, ou fila com **FFmpeg** noutro serviço (não disponível de forma nativa no Worker).
+- **Worker + WASM** (ex. Squoosh) só para JPEG, ou fila dedicada com FFmpeg noutro serviço.
 
-São passos opcionais quando o ajuste só com CSS + miniaturas hospedadas no R2 não for suficiente.
+São passos opcionais quando **um par** poster + hover no R2 + `object-fit: cover` no site não forem suficientes.
 
 ### 3.2 Produção: OAuth GitHub via Worker
 
