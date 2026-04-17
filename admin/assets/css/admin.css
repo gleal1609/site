@@ -220,7 +220,9 @@ input, textarea, select { font: inherit; }
 
 .grid-container {
   position: relative;
+  width: 100%;
   min-height: 200px;
+  box-sizing: border-box;
 }
 
 /* ---- grid cards ---- */
@@ -280,10 +282,10 @@ input, textarea, select { font: inherit; }
 .gc:hover .gc-handle { opacity: 1; }
 .gc-handle:active { cursor: grabbing; }
 
-/* Packery drag states */
+/* Packery drag states — z-index alto para não ficar por baixo de outros cartões */
 .gc.is-dragging {
-  z-index: 100;
-  opacity: 0.9;
+  z-index: 5000;
+  opacity: 0.95;
   border-color: var(--accent);
   box-shadow: 0 8px 30px rgba(0,0,0,0.5);
 }
