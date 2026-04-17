@@ -15,10 +15,16 @@ class GridManager {
     this._boundResize = this._onWindowResize.bind(this);
   }
 
-  render(projects, mode) {
+  /**
+   * @param {object[]} projects
+   * @param {'home'|'all'} mode
+   * @param {{ draftSlugs?: Set<string> }} [opts]
+   */
+  render(projects, mode, opts = {}) {
     this.destroy();
     this._mode = mode;
     this.el.innerHTML = '';
+    const draftSlugs = opts.draftSlugs;
 
     const sorted = [...projects].sort(
       (a, b) => (a.order ?? 999) - (b.order ?? 999),
@@ -32,6 +38,9 @@ class GridManager {
       card.dataset.size = p.home_size || '1x1';
 
       const thumb = p.thumbnail || '';
+      const draftBadge = draftSlugs && draftSlugs.has(slug)
+        ? '<span class="gc-badge draft">RASCUNHO</span>'
+        : '';
       card.innerHTML = `
         <img src="${escAttr(thumb)}" alt="" class="gc-img" loading="lazy" />
         <div class="gc-info">
@@ -42,6 +51,7 @@ class GridManager {
           <span class="gc-badge order">${p.order ?? '–'}</span>
           <span class="gc-badge size">${p.home_size || '1x1'}</span>
           ${p.show_on_home ? '<span class="gc-badge home">HOME</span>' : ''}
+          ${draftBadge}
         </div>
         <div class="gc-handle" title="Arrastar para reordenar">⠿</div>`;
 

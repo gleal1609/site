@@ -60,7 +60,7 @@
 
   <!-- ========== Main App ========== -->
   <div x-show="!loading && authed" x-cloak
-       class="admin-app" :class="{ 'editor-open': editorOpen }">
+       class="admin-app" :class="{ 'editor-open': editorOpen, 'is-publishing': publishing }">
 
     <!-- Header -->
     <header class="admin-header">
@@ -75,6 +75,21 @@
         </button>
         <button @click="setView('all')" :class="{ active: view === 'all' }" class="tab-btn">
           Todos
+        </button>
+      </div>
+
+      <div class="header-publish" x-show="authed">
+        <span class="draft-indicator"
+              x-show="hasUnpublishedChanges"
+              x-text="unpublishedSummary"
+              title="Alterações ainda não enviadas ao servidor / deploy"></span>
+        <button type="button"
+                class="btn btn-primary"
+                @click="publishAll()"
+                :disabled="!canPublish || publishing"
+                title="Gravar rascunhos no servidor e disparar um deploy">
+          <span x-show="publishing" class="spinner-sm"></span>
+          Publicar
         </button>
       </div>
 
@@ -112,14 +127,13 @@
           <p class="empty-state-hint">A aba «Home» só lista projetos com «Mostrar na Home». Use «Todos» ou edite um projeto e marque essa opção.</p>
         </div>
 
-        <!-- Pending order save bar -->
+        <!-- Pending order: confirmar para incluir na publicação -->
         <div x-show="hasPendingOrder && pendingCount > 0" x-transition class="save-bar">
-          <span x-text="`${pendingCount} alteração(ões) de ordem pendente(s)`"></span>
-          <button @click="saveOrder()" :disabled="saving" class="btn btn-primary">
-            <span x-show="saving" class="spinner-sm"></span>
+          <span x-text="`${pendingCount} alteração(ões) de ordem não confirmada(s) — use «Salvar Ordem» para incluir na publicação.`"></span>
+          <button type="button" @click="saveOrder()" class="btn btn-primary">
             Salvar Ordem
           </button>
-          <button @click="pendingOrder = []; _renderGrid()" class="btn btn-secondary">
+          <button type="button" @click="discardPendingOrder()" class="btn btn-secondary">
             Descartar
           </button>
         </div>
@@ -129,7 +143,7 @@
       <aside x-show="editorOpen" x-transition.opacity class="editor-sidebar">
         <div class="editor-header">
           <h2 x-text="isNew ? 'Novo Projeto' : 'Editar Projeto'"></h2>
-          <button @click="closeEditor()" class="btn-close">&times;</button>
+          <button type="button" @click="closeEditorGuarded()" class="btn-close" title="Fechar">&times;</button>
         </div>
 
         <!-- Loading -->
@@ -254,12 +268,15 @@
 
           <!-- Actions -->
           <div class="editor-actions">
-            <button @click="saveProject()" :disabled="saving" class="btn btn-primary btn-lg"
-                    style="flex:1">
-              <span x-show="saving" class="spinner-sm"></span>
+            <button type="button" @click="saveProject()" :disabled="publishing"
+                    class="btn btn-primary btn-lg" style="flex:1">
               Salvar
             </button>
-            <button x-show="!isNew" @click="deleteProject()" :disabled="saving"
+            <button type="button" @click="discardEditorDraft()" :disabled="publishing"
+                    class="btn btn-secondary">
+              Descartar
+            </button>
+            <button x-show="!isNew" type="button" @click="deleteProject()" :disabled="saving || publishing"
                     class="btn btn-danger">
               Excluir
             </button>
@@ -272,6 +289,15 @@
   <!-- ========== Toast ========== -->
   <div x-show="toast" x-transition class="toast" :class="toast?.type" x-cloak>
     <span x-text="toast?.msg"></span>
+  </div>
+
+  <!-- Publicação em andamento -->
+  <div x-show="publishing" x-cloak class="publish-overlay" aria-live="polite" aria-busy="true">
+    <div class="publish-overlay-card">
+      <div class="spinner"></div>
+      <p class="publish-overlay-title">Publicação em andamento</p>
+      <p class="publish-overlay-phase" x-text="publishPhase"></p>
+    </div>
   </div>
 
 </body>

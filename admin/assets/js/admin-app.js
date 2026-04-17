@@ -9,6 +9,9 @@ function reversoCmsApiBase() {
   return null;
 }
 
+/** Rascunho de «Novo projeto» antes de publicar */
+const DRAFT_NEW = '__new__';
+
 const ADMIN_CONFIG = {
   serviceTypes: [
     'EFEITOS VISUAIS',
@@ -36,27 +39,40 @@ function adminApp() {
     user: null,
 
     projects: [],
+    /** Snapshot do último carregamento/publicação (comparar ordem ao confirmar rascunho de ordem) */
+    baselineProjects: [],
     loading: true,
     saving: false,
 
     view: 'home',
     pendingOrder: [],
+    /** Itens `{ slug, order }` a enviar em POST /reorder na publicação (vs. baseline) */
+    reorderDraft: [],
+
+    /** @type {Record<string, { payload: object, thumbFile: File|null, videoFile: File|null, isNew: boolean, version?: number }>} */
+    projectDrafts: {},
 
     editorOpen: false,
     editorLoading: false,
     editSlug: null,
     form: {},
     isNew: false,
+    formDirty: false,
+    _suppressFormDirty: false,
 
     thumbFile: null,
     thumbPreview: null,
     videoFile: null,
     videoPreview: null,
 
+    publishing: false,
+    publishPhase: '',
+
     _mde: null,
     _auth: null,
     _api: null,
     _grid: null,
+    _beforeUnloadBound: null,
 
     toast: null,
 
@@ -73,6 +89,14 @@ function adminApp() {
       this._auth = new Auth(apiBase);
       this._api = new CfAPI(apiBase);
 
+      this._beforeUnloadBound = (e) => {
+        if (this.hasUnpublishedChanges) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      };
+      window.addEventListener('beforeunload', this._beforeUnloadBound);
+
       const loginErr = this._auth.checkLoginError();
       if (loginErr) {
         this.loading = false;
@@ -85,6 +109,16 @@ function adminApp() {
         this.user = this._auth.user;
         this.authed = true;
         await this._loadProjects();
+        await this.$nextTick();
+        this.$watch(
+          'form',
+          () => {
+            if (this._suppressFormDirty) return;
+            if (!this.editorOpen) return;
+            this.formDirty = true;
+          },
+          { deep: true },
+        );
       }
       this.loading = false;
     },
@@ -97,19 +131,35 @@ function adminApp() {
 
     async logout() {
       if (!this._auth || !this._api) return;
+      if (this.hasUnpublishedChanges) {
+        const ok = confirm(
+          'Existem alterações não publicadas (rascunho no navegador). Sair mesmo assim?',
+        );
+        if (!ok) return;
+      }
+      window.removeEventListener('beforeunload', this._beforeUnloadBound);
       await this._auth.logout(this._api);
       this.authed = false;
       this.user = null;
       this.projects = [];
+      this.baselineProjects = [];
+      this.reorderDraft = [];
+      this.projectDrafts = {};
       this.editorOpen = false;
       this._grid?.destroy();
       this._grid = null;
     },
 
+    _cloneProjects(list) {
+      return list.map((p) => ({ ...p }));
+    },
+
+    _snapshotBaseline() {
+      this.baselineProjects = this._cloneProjects(this.projects);
+    },
+
     /**
      * @param {{ silent?: boolean }} opts
-     * silent=true: não usa o estado global `loading` (evita esconder o app com x-show="!loading",
-     * o que zera a largura do grid e quebra o Packery). Usar após salvar/excluir.
      */
     async _loadProjects(opts = {}) {
       const silent = opts.silent === true;
@@ -122,6 +172,7 @@ function adminApp() {
           p._slug = p.slug;
           if (!p.url) p.url = `/projects/${p.slug}/`;
         });
+        this._snapshotBaseline();
         ok = true;
       } catch (e) {
         console.error(e);
@@ -132,10 +183,17 @@ function adminApp() {
       if (!ok) return;
 
       await this.$nextTick();
-      // Após tirar display:none do app, esperar layout para clientWidth do grid > 0
       requestAnimationFrame(() => {
         requestAnimationFrame(() => this._renderGrid());
       });
+    },
+
+    _draftSlugSet() {
+      const s = new Set();
+      for (const k of Object.keys(this.projectDrafts)) {
+        if (k !== DRAFT_NEW) s.add(k);
+      }
+      return s;
     },
 
     _renderGrid() {
@@ -145,7 +203,9 @@ function adminApp() {
       if (!this._grid) {
         this._grid = new GridManager(container);
         this._grid.onClick((p) => this.openEditor(p));
-        this._grid.onReorder((order) => { this.pendingOrder = order; });
+        this._grid.onReorder((order) => {
+          this.pendingOrder = order;
+        });
       }
 
       const list =
@@ -153,7 +213,7 @@ function adminApp() {
           ? this.projects.filter((p) => p.show_on_home)
           : [...this.projects];
 
-      this._grid.render(list, this.view);
+      this._grid.render(list, this.view, { draftSlugs: this._draftSlugSet() });
       this.pendingOrder = [];
     },
 
@@ -177,31 +237,70 @@ function adminApp() {
       }).length;
     },
 
-    async saveOrder() {
-      if (!this.pendingCount) return;
-      this.saving = true;
-      try {
-        const items = this.pendingOrder
-          .filter(o => {
-            const p = this.projects.find(x => x._slug === o.slug);
-            return p && p.order !== o.order;
-          })
-          .map(o => ({ slug: o.slug, order: o.order }));
+    get hasStagedOrder() {
+      return Array.isArray(this.reorderDraft) && this.reorderDraft.length > 0;
+    },
 
-        await this._api.reorderProjects(items);
+    get hasStagedProjects() {
+      return Object.keys(this.projectDrafts).length > 0;
+    },
 
-        items.forEach(item => {
-          const p = this.projects.find(x => x._slug === item.slug);
-          if (p) p.order = item.order;
-        });
+    /** Inclui rascunhos confirmados + ordem/form ainda não confirmados */
+    get hasUnpublishedChanges() {
+      return (
+        this.hasStagedOrder ||
+        this.hasStagedProjects ||
+        this.pendingCount > 0 ||
+        (this.editorOpen && this.formDirty)
+      );
+    },
 
-        this.pendingOrder = [];
-        this._toast(`Ordem de ${items.length} projeto(s) salva!`, 'success');
-        // Deploy Netlify é disparado no Worker em POST /api/projects/reorder (não depender só do browser).
-      } catch (e) {
-        this._toast('Erro ao salvar ordem: ' + e.message, 'error');
+    get canPublish() {
+      return this.hasStagedOrder || this.hasStagedProjects;
+    },
+
+    get unpublishedSummary() {
+      const parts = [];
+      if (this.pendingCount > 0) parts.push('ordem não confirmada');
+      if (this.hasStagedOrder) parts.push('ordem em rascunho');
+      if (this.hasStagedProjects) {
+        const n = Object.keys(this.projectDrafts).length;
+        parts.push(n === 1 ? '1 projeto em rascunho' : `${n} projetos em rascunho`);
       }
-      this.saving = false;
+      if (this.editorOpen && this.formDirty) parts.push('formulário em edição');
+      return parts.length ? parts.join(' · ') : '';
+    },
+
+    saveOrder() {
+      if (!this.pendingCount) return;
+
+      this.pendingOrder.forEach(({ slug, order }) => {
+        const p = this.projects.find((x) => x._slug === slug);
+        if (p) p.order = order;
+      });
+
+      const items = this.pendingOrder
+        .filter((o) => {
+          const baseline = this.baselineProjects.find((x) => x._slug === o.slug);
+          return baseline && baseline.order !== o.order;
+        })
+        .map((o) => ({ slug: o.slug, order: o.order }));
+
+      if (!items.length) {
+        this.pendingOrder = [];
+        this._renderGrid();
+        return;
+      }
+
+      this.reorderDraft = items;
+      this.pendingOrder = [];
+      this._renderGrid();
+      this._toast('Ordem incluída na publicação pendente.', 'success');
+    },
+
+    discardPendingOrder() {
+      this.pendingOrder = [];
+      this._renderGrid();
     },
 
     async openEditor(project) {
@@ -210,9 +309,11 @@ function adminApp() {
       this.editorOpen = true;
       this.editorLoading = true;
       this._clearUploads();
+      this.formDirty = false;
 
       try {
         const data = await this._api.getProject(project._slug);
+        this._suppressFormDirty = true;
         this.form = {
           ...data,
           body: data.body_md || '',
@@ -222,16 +323,53 @@ function adminApp() {
         if (!Array.isArray(this.form.service_types)) {
           this.form.service_types = [];
         }
+        const draft = this.projectDrafts[project._slug];
+        if (draft) {
+          this._applyDraftPayloadToForm(draft);
+        }
       } catch (e) {
         this._toast('Erro ao carregar projeto', 'error');
         this.editorOpen = false;
       }
       this.editorLoading = false;
 
+      await this.$nextTick();
+      this._suppressFormDirty = false;
+      this.formDirty = false;
+
       this.$nextTick(() => {
         this._initMDE();
         this._grid?.relayout();
       });
+    },
+
+    _applyDraftPayloadToForm(draft) {
+      const p = draft.payload;
+      this.form.title = p.title;
+      this.form.body = p.body_md || '';
+      this.form.description = p.description != null ? p.description : '';
+      this.form.service_types = Array.isArray(p.service_types) ? [...p.service_types] : [];
+      this.form.client = p.client || '';
+      this.form.date_mmddyyyy = p.date_mmddyyyy || '';
+      this.form.year = p.year != null ? p.year : this.form.year;
+      this.form.show_on_home = !!p.show_on_home;
+      this.form.order = p.order != null ? p.order : this.form.order;
+      this.form.home_size = p.home_size || '1x1';
+      this.form.youtube_url = p.youtube_url || '';
+      this.form.pixieset_url = p.pixieset_url || '';
+      this.form.published = !!p.published;
+      if (p.thumbnail) this.form.thumbnail = p.thumbnail;
+      if (p.hover_preview) this.form.hover_preview = p.hover_preview;
+      this.thumbFile = draft.thumbFile || null;
+      this.videoFile = draft.videoFile || null;
+      if (this.thumbFile) {
+        MediaUpload.revokePreview(this.thumbPreview);
+        this.thumbPreview = MediaUpload.preview(this.thumbFile);
+      }
+      if (this.videoFile) {
+        MediaUpload.revokePreview(this.videoPreview);
+        this.videoPreview = MediaUpload.preview(this.videoFile);
+      }
     },
 
     newProject() {
@@ -240,26 +378,52 @@ function adminApp() {
       this.editorOpen = true;
       this.editorLoading = false;
       this._clearUploads();
+      this.formDirty = false;
 
-      this.form = {
-        title: '',
-        thumbnail: '',
-        hover_preview: '',
-        service_types: [],
-        client: '',
-        date_mmddyyyy: '',
-        year: new Date().getFullYear(),
-        show_on_home: false,
-        order: this.projects.length + 1,
-        home_size: '1x1',
-        youtube_url: '',
-        pixieset_url: '',
-        published: false,
-        body: '',
-        description: '',
-      };
+      const existing = this.projectDrafts[DRAFT_NEW];
+      this._suppressFormDirty = true;
+      if (existing) {
+        this.form = {
+          title: '',
+          thumbnail: '',
+          hover_preview: '',
+          service_types: [],
+          client: '',
+          date_mmddyyyy: '',
+          year: new Date().getFullYear(),
+          show_on_home: false,
+          order: this.projects.length + 1,
+          home_size: '1x1',
+          youtube_url: '',
+          pixieset_url: '',
+          published: false,
+          body: '',
+          description: '',
+        };
+        this._applyDraftPayloadToForm(existing);
+      } else {
+        this.form = {
+          title: '',
+          thumbnail: '',
+          hover_preview: '',
+          service_types: [],
+          client: '',
+          date_mmddyyyy: '',
+          year: new Date().getFullYear(),
+          show_on_home: false,
+          order: this.projects.length + 1,
+          home_size: '1x1',
+          youtube_url: '',
+          pixieset_url: '',
+          published: false,
+          body: '',
+          description: '',
+        };
+      }
 
       this.$nextTick(() => {
+        this._suppressFormDirty = false;
+        this.formDirty = false;
         this._initMDE();
         this._grid?.relayout();
       });
@@ -270,9 +434,75 @@ function adminApp() {
       this.editSlug = null;
       this.form = {};
       this.isNew = false;
+      this.formDirty = false;
       this._clearUploads();
       this._destroyMDE();
       this.$nextTick(() => this._grid?.relayout());
+    },
+
+    closeEditorGuarded() {
+      if (this.formDirty) {
+        const ok = confirm(
+          'Existem alterações neste formulário que não foram confirmadas com «Salvar». Descartar?',
+        );
+        if (!ok) return;
+      }
+      this.closeEditor();
+    },
+
+    async discardEditorDraft() {
+      const key = this.isNew ? DRAFT_NEW : this.form._slug;
+      if (this.projectDrafts[key]) {
+        delete this.projectDrafts[key];
+        this._clearUploads();
+        if (this.isNew) {
+          this.closeEditor();
+          this._toast('Rascunho do novo projeto removido.', 'success');
+          this._renderGrid();
+          return;
+        }
+        await this._reloadEditorFromApi(this.form._slug);
+        this.formDirty = false;
+        this._toast('Rascunho removido; formulário reposto a partir do servidor.', 'warning');
+        this._renderGrid();
+        return;
+      }
+      if (this.isNew) {
+        if (this.formDirty && !confirm('Descartar alterações não confirmadas?')) return;
+        this.closeEditor();
+        return;
+      }
+      await this._reloadEditorFromApi(this.form._slug);
+      this.formDirty = false;
+      this._toast('Alterações não confirmadas descartadas.', 'success');
+    },
+
+    async _reloadEditorFromApi(slug) {
+      this.editorLoading = true;
+      this._clearUploads();
+      try {
+        const data = await this._api.getProject(slug);
+        this._suppressFormDirty = true;
+        this.form = {
+          ...data,
+          body: data.body_md || '',
+          description: data.description || '',
+          _slug: slug,
+        };
+        if (!Array.isArray(this.form.service_types)) {
+          this.form.service_types = [];
+        }
+      } catch (e) {
+        this._toast('Erro ao recarregar projeto', 'error');
+      }
+      this.editorLoading = false;
+      await this.$nextTick();
+      this._suppressFormDirty = false;
+      this.formDirty = false;
+      this.$nextTick(() => {
+        this._initMDE();
+        this._grid?.relayout();
+      });
     },
 
     toggleService(svc) {
@@ -291,80 +521,161 @@ function adminApp() {
       this.form.home_size = size;
     },
 
-    async saveProject() {
+    _buildPayloadFromForm(slugForUploads) {
+      if (this._mde) this.form.body = this._mde.value();
+
+      const payload = {
+        title: this.form.title,
+        body_md: this.form.body || '',
+        description: (this.form.description || '').trim() || null,
+        service_types: this.form.service_types || [],
+        client: this.form.client || '',
+        date_mmddyyyy: this.form.date_mmddyyyy || '',
+        year: this.form.year ? Number(this.form.year) : null,
+        show_on_home: !!this.form.show_on_home,
+        order: this.form.order ? Number(this.form.order) : 0,
+        home_size: this.form.home_size || '1x1',
+        youtube_url: this.form.youtube_url || '',
+        pixieset_url: this.form.pixieset_url || '',
+        published: this.form.published !== undefined ? !!this.form.published : false,
+      };
+
+      if (this.form.thumbnail) payload.thumbnail = this.form.thumbnail;
+      if (this.form.hover_preview) payload.hover_preview = this.form.hover_preview;
+
+      return { payload, slugForUploads };
+    },
+
+    saveProject() {
       if (!this.form.title) {
         this._toast('Título é obrigatório', 'error');
         return;
       }
 
-      this.saving = true;
-      try {
-        if (this._mde) this.form.body = this._mde.value();
+      if (this._mde) this.form.body = this._mde.value();
 
-        const slug = this.isNew ? this._makeSlug() : this.form._slug;
+      const slug = this.isNew ? this._makeSlug() : this.form._slug;
+      const { payload } = this._buildPayloadFromForm(slug);
+      const key = this.isNew ? DRAFT_NEW : this.form._slug;
 
-        if (this.thumbFile) {
-          MediaUpload.validate(this.thumbFile, MediaUpload.IMG_TYPES);
-          const result = await this._api.uploadMedia(slug, 'thumbnail', this.thumbFile);
-          this.form.thumbnail = result.key;
-        }
+      this.projectDrafts[key] = {
+        payload: { ...payload },
+        thumbFile: this.thumbFile,
+        videoFile: this.videoFile,
+        isNew: this.isNew,
+        version: this.isNew ? undefined : this.form.version,
+      };
 
-        if (this.videoFile) {
-          MediaUpload.validate(this.videoFile, MediaUpload.VID_TYPES);
-          const result = await this._api.uploadMedia(slug, 'preview', this.videoFile);
-          this.form.hover_preview = result.key;
-        }
-
-        const payload = {
-          title: this.form.title,
-          body_md: this.form.body || '',
-          description: (this.form.description || '').trim() || null,
-          service_types: this.form.service_types || [],
-          client: this.form.client || '',
-          date_mmddyyyy: this.form.date_mmddyyyy || '',
-          year: this.form.year ? Number(this.form.year) : null,
-          show_on_home: !!this.form.show_on_home,
-          order: this.form.order ? Number(this.form.order) : 0,
-          home_size: this.form.home_size || '1x1',
-          youtube_url: this.form.youtube_url || '',
-          pixieset_url: this.form.pixieset_url || '',
-          published: this.form.published !== undefined ? !!this.form.published : false,
-        };
-
-        if (this.form.thumbnail) payload.thumbnail = this.form.thumbnail;
-        if (this.form.hover_preview) payload.hover_preview = this.form.hover_preview;
-
-        if (this.isNew) {
-          payload.slug = slug;
-          const result = await this._api.createProject(payload);
-          this._toast('Projeto criado!', 'success');
-          await this._maybeTriggerDeploy(result);
-        } else {
-          payload.version = this.form.version;
-          const result = await this._api.updateProject(slug, payload);
-          this._toast('Projeto salvo!', 'success');
-          await this._maybeTriggerDeploy(result);
-        }
-
-        this.closeEditor();
-        await this._loadProjects({ silent: true });
-      } catch (e) {
-        if (e.message.includes('409') || e.message.includes('Conflict')) {
-          this._toast('Conflito: outro utilizador editou. Recarregue a página.', 'error');
-        } else {
-          this._toast('Erro: ' + e.message, 'error');
+      if (!this.isNew) {
+        const p = this.projects.find((x) => x._slug === this.form._slug);
+        if (p) {
+          p.title = this.form.title;
+          p.show_on_home = !!this.form.show_on_home;
+          p.home_size = this.form.home_size || '1x1';
+          p.client = this.form.client || '';
+          if (this.form.thumbnail) p.thumbnail = this.form.thumbnail;
+          if (this.form.hover_preview) p.hover_preview = this.form.hover_preview;
         }
       }
-      this.saving = false;
+
+      this.formDirty = false;
+      this._toast('Alterações incluídas na publicação pendente.', 'success');
+      this._renderGrid();
+    },
+
+    async publishAll() {
+      if (!this.canPublish || !this._api) return;
+
+      const createDraft = this.projectDrafts[DRAFT_NEW];
+      const updateKeys = Object.keys(this.projectDrafts).filter((k) => k !== DRAFT_NEW);
+      const reorderItems = this.reorderDraft?.length ? [...this.reorderDraft] : [];
+
+      this.publishing = true;
+      this.publishPhase = 'A preparar…';
+
+      try {
+        if (createDraft) {
+          this.publishPhase = 'A criar novo projeto…';
+          const slug = this._makeSlugFromPayload(createDraft.payload);
+          await this._runUploadsForDraft(slug, createDraft);
+          await this._api.createProject({ ...createDraft.payload, slug });
+          delete this.projectDrafts[DRAFT_NEW];
+        }
+
+        for (const slug of updateKeys) {
+          const d = this.projectDrafts[slug];
+          if (!d) continue;
+          this.publishPhase = `A atualizar «${slug}»…`;
+          await this._runUploadsForDraft(slug, d);
+          const body = { ...d.payload, version: d.version };
+          await this._api.updateProject(slug, body);
+          delete this.projectDrafts[slug];
+        }
+
+        if (reorderItems.length) {
+          this.publishPhase = 'A aplicar ordem…';
+          await this._api.reorderProjects(reorderItems);
+          this.reorderDraft = [];
+        }
+
+        this.publishPhase = 'A disparar deploy no Netlify…';
+        try {
+          const deployRes = await this._api.triggerDeploy();
+          if (deployRes?.skipped) {
+            this._toast(
+              deployRes.message || 'Deploy adiado (debounce de 5 min). Os dados já estão guardados.',
+              'warning',
+            );
+          } else {
+            this._toast('Publicação concluída.', 'success');
+          }
+        } catch (de) {
+          this._toast(
+            `Dados gravados no servidor; deploy falhou: ${de.message}`,
+            'error',
+          );
+        }
+
+        await this._loadProjects({ silent: true });
+        this.closeEditor();
+      } catch (e) {
+        const msg = e.message || String(e);
+        if (msg.includes('409') || msg.includes('Conflict')) {
+          this._toast('Conflito: recarregue a página e tente de novo.', 'error');
+        } else {
+          this._toast('Erro ao gravar: ' + msg, 'error');
+        }
+        await this._loadProjects({ silent: true });
+      } finally {
+        this.publishing = false;
+        this.publishPhase = '';
+      }
+    },
+
+    async _runUploadsForDraft(slug, draft) {
+      if (draft.thumbFile) {
+        MediaUpload.validate(draft.thumbFile, MediaUpload.IMG_TYPES);
+        const result = await this._api.uploadMedia(slug, 'thumbnail', draft.thumbFile);
+        draft.payload.thumbnail = result.key;
+      }
+      if (draft.videoFile) {
+        MediaUpload.validate(draft.videoFile, MediaUpload.VID_TYPES);
+        const result = await this._api.uploadMedia(slug, 'preview', draft.videoFile);
+        draft.payload.hover_preview = result.key;
+      }
     },
 
     async deleteProject() {
       if (!this.form._slug) return;
       if (!confirm(`Excluir "${this.form.title}"? Esta ação não pode ser desfeita.`)) return;
 
+      const slug = this.form._slug;
+      delete this.projectDrafts[slug];
+      this.reorderDraft = (this.reorderDraft || []).filter((i) => i.slug !== slug);
+
       this.saving = true;
       try {
-        const result = await this._api.deleteProject(this.form._slug);
+        const result = await this._api.deleteProject(slug);
         this._toast('Projeto excluído', 'success');
         await this._maybeTriggerDeploy(result);
         this.closeEditor();
@@ -450,12 +761,20 @@ function adminApp() {
     },
 
     _makeSlug() {
-      const d = this.form.date_mmddyyyy || '';
-      const title = (this.form.title || 'projeto')
+      return this._makeSlugFromPayload({
+        date_mmddyyyy: this.form.date_mmddyyyy,
+        title: this.form.title,
+        client: this.form.client,
+      });
+    },
+
+    _makeSlugFromPayload(p) {
+      const d = p.date_mmddyyyy || '';
+      const title = (p.title || 'projeto')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')
         .toLowerCase();
-      const client = (this.form.client || 'cliente')
+      const client = (p.client || 'cliente')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')
         .toLowerCase();
@@ -464,10 +783,16 @@ function adminApp() {
 
     _toast(msg, type) {
       this.toast = { msg, type };
-      setTimeout(() => { this.toast = null; }, 4000);
+      setTimeout(() => {
+        this.toast = null;
+      }, 4000);
     },
 
-    get serviceOptions() { return ADMIN_CONFIG.serviceTypes; },
-    get sizeOptions() { return ADMIN_CONFIG.sizeOptions; },
+    get serviceOptions() {
+      return ADMIN_CONFIG.serviceTypes;
+    },
+    get sizeOptions() {
+      return ADMIN_CONFIG.sizeOptions;
+    },
   };
 }

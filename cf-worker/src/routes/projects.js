@@ -1,6 +1,5 @@
 import { json, error } from '../utils/response.js';
 import { logAudit } from '../utils/audit.js';
-import { runDeployHook } from './deploy.js';
 import { SLUG_RE, SLUG_PATH_RE } from '../utils/slug.js';
 import {
   ingestYoutubeThumbnailToR2,
@@ -329,21 +328,9 @@ export async function handleReorder(request, env, ctx) {
     diff: { count: items.length },
   });
 
-  // Dispara o build no Netlify no próprio Worker — não depende do admin ter JS/cache atualizado
-  // nem de um segundo POST /api/deploy no browser.
-  ctx.waitUntil(
-    runDeployHook(env, ctx)
-      .then((out) => {
-        if (out.kind === 'not_configured') {
-          console.warn('[reorder] NETLIFY_DEPLOY_HOOK_URL not set; deploy skipped');
-        } else if (out.kind === 'netlify_error') {
-          console.error('[reorder] Netlify hook HTTP', out.status);
-        }
-      })
-      .catch((e) => console.error('[reorder] deploy hook error', e)),
-  );
+  // Deploy: o admin agrega alterações e chama POST /api/deploy uma vez em «Publicar».
 
-  return json({ reordered: items.length, triggerDeploy: true });
+  return json({ reordered: items.length, triggerDeploy: false });
 }
 
 /**
