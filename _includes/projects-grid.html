@@ -16,7 +16,7 @@
       {% else %}
         {% assign proj_url = project.slug | prepend: "/projects/" | append: "/" %}
       {% endif %}
-      <a href="{{ proj_url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-order="{{ project.order | default: 999 }}">
+      <a href="{{ proj_url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-order="{{ project.order | default: 999 }}"{% if project.home_col != nil %} data-col="{{ project.home_col }}"{% endif %}{% if project.home_row != nil %} data-row="{{ project.home_row }}"{% endif %}>
       <div class="project-thumbnail-container">
         {% assign _thumb = project.thumbnail | strip %}
         {% assign _hover = project.hover_preview | strip %}

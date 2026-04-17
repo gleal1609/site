@@ -1,29 +1,32 @@
 /**
- * Visual masonry grid with drag-and-drop reordering.
- * Uses Packery for layout and Draggabilly for drag interaction.
+ * Admin grid with 2D free layout (Home) and sequential list (Todos).
  *
- * Integração oficial: `packery.bindDraggabillyEvents(d)` — durante o arraste o Packery
- * recalcula os outros itens (shift). Para suavizar:
- * - `transitionDuration` fica a `0` enquanto arrasta (menos animação em cadeia);
- * - repõe-se após `dragItemPositioned` (fim do layout pós-solta).
+ * Home mode:
+ *   - Each card has fixed (home_col, home_row) + size (home_size w×h).
+ *   - Dragging: absolute movement, snap-to-grid on drop, swap on collision.
+ *   - No auto-packing: cards stay exactly where the user drops them.
+ *   - Missing (col, row) → auto-pack from `order` on render (first-fit).
  *
- * Colunas: usa-se `Math.floor(largura / alvo)` em vez de `Math.round` para o número de
- * colunas, evitando uma coluna extra muito estreita e uma faixa vazia persistente à direita.
+ * Todos mode:
+ *   - All cards 1×1 sorted by `order`, simple sequential swap-on-drop reorder.
  */
 class GridManager {
   constructor(container) {
     this.el = container;
-    this.pckry = null;
     this.drags = [];
-    this._onReorder = null;
+    this._onGridChange = null;
+    this._onOrderChange = null;
     this._onClick = null;
     this.gutter = 6;
-    /** Largura-alvo por célula (px); floor(largura/alvo) define n.º de colunas */
-    this._colTargetPx = 200;
     this._mode = 'home';
     this._resizeTimer = null;
     this._boundResize = this._onWindowResize.bind(this);
-    this._boundDragItemPositioned = this._onDragItemPositioned.bind(this);
+    this._items = [];
+    this._cardBySlug = new Map();
+    this._dragStartPos = null;
+    this._numColumns = 1;
+    this._col = 0;
+    this._row = 0;
   }
 
   /**
@@ -37,130 +40,317 @@ class GridManager {
     this.el.innerHTML = '';
     const draftSlugs = opts.draftSlugs;
 
+    const { col, row, columns } = this._calcCol();
+    this._col = col;
+    this._row = row;
+    this._numColumns = columns;
+
     const sorted = [...projects].sort(
       (a, b) => (a.order ?? 999) - (b.order ?? 999),
     );
 
-    sorted.forEach((p) => {
-      const slug = p._slug || slugFromUrl(p.url);
-      const card = document.createElement('div');
-      card.className = 'gc';
-      card.dataset.slug = slug;
-      card.dataset.size = p.home_size || '1x1';
+    const items = sorted.map((p, idx) => this._makeItem(p, idx));
+    this._items = items;
 
-      const thumb = p.thumbnail || '';
-      const draftBadge = draftSlugs && draftSlugs.has(slug)
-        ? '<span class="gc-badge draft">RASCUNHO</span>'
-        : '';
-      card.innerHTML = `
-        <img src="${escAttr(thumb)}" alt="" class="gc-img" loading="lazy" />
-        <div class="gc-info">
-          <span class="gc-title">${esc(p.title)}</span>
-          <span class="gc-client">${esc(p.client)}</span>
-        </div>
-        <div class="gc-badges">
-          <span class="gc-badge order">${p.order ?? '–'}</span>
-          <span class="gc-badge size">${p.home_size || '1x1'}</span>
-          ${p.show_on_home ? '<span class="gc-badge home">HOME</span>' : ''}
-          ${draftBadge}
-        </div>
-        <div class="gc-handle" title="Arrastar para reordenar">⠿</div>`;
+    if (mode === 'home') {
+      this._assignHomePositions(items);
+    } else {
+      this._assignSequentialPositions(items);
+    }
 
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('.gc-handle')) return;
-        this._onClick?.(p);
-      });
-
-      const imgEl = card.querySelector('.gc-img');
-      if (imgEl) {
-        imgEl.addEventListener('error', () => {
-          imgEl.style.display = 'none';
-        });
-      }
-
+    items.forEach((it) => {
+      const card = this._buildCard(it, draftSlugs);
+      this._positionCard(card, it);
       this.el.appendChild(card);
+      this._cardBySlug.set(it.slug, card);
     });
 
-    this._initPackery();
+    this._updateContainerHeight();
+    this._attachDrags();
     window.addEventListener('resize', this._boundResize);
   }
 
-  _initPackery() {
-    const { col, row } = this._calcCol();
-
-    this.el.querySelectorAll('.gc').forEach((c) => {
-      this._sizeCard(c, col, row);
-    });
-
-    this._transitionNormal = '0.2s';
-
-    this.pckry = new Packery(this.el, {
-      itemSelector: '.gc',
-      gutter: this.gutter,
-      columnWidth: col,
-      rowHeight: row,
-      percentPosition: false,
-      transitionDuration: this._transitionNormal,
-    });
-
-    this.pckry.on('dragItemPositioned', this._boundDragItemPositioned);
-
-    this.drags = [];
-    this.el.querySelectorAll('.gc').forEach((c) => {
-      const d = new Draggabilly(c, { handle: '.gc-handle' });
-      d.on('dragStart', () => {
-        c.classList.add('is-dragging');
-        if (this.pckry) {
-          this.pckry.options.transitionDuration = '0';
-        }
-      });
-      this.pckry.bindDraggabillyEvents(d);
-      this.drags.push(d);
-    });
-  }
-
-  _onDragItemPositioned() {
-    const el = this.el.querySelector('.gc.is-dragging');
-    if (el) el.classList.remove('is-dragging');
-    if (this.pckry) {
-      this.pckry.options.transitionDuration = this._transitionNormal;
-    }
+  _makeItem(p, idx) {
+    const slug = p._slug || slugFromUrl(p.url);
+    const sizeStr = p.home_size || '1x1';
+    const [w, h] = sizeStr.split('x').map(Number);
+    return {
+      slug,
+      project: p,
+      order: p.order ?? idx + 1,
+      w: w || 1,
+      h: h || 1,
+      col: Number.isInteger(p.home_col) ? p.home_col : null,
+      row: Number.isInteger(p.home_row) ? p.home_row : null,
+      size: sizeStr,
+    };
   }
 
   /**
-   * N.º de colunas: floor(w / alvo) em vez de round(w / 210) para não forçar uma
-   * coluna extra quando a largura está logo abaixo do limiar — caso típico de «coluna
-   * vazia» à direita com células demasiado estreitas.
+   * First-fit packing: keeps any explicit (col,row) from the DB; fills the rest
+   * by scanning row by row, left→right. Matches the Packery result for fresh
+   * data while letting the user free positions from then on.
    */
-  _calcCol() {
-    const w = this.el.clientWidth;
-    if (w <= 0) return { col: 100, row: 100 };
-    const target = this._colTargetPx;
-    const n = Math.max(2, Math.floor(w / target));
-    const col = Math.floor((w - (n - 1) * this.gutter) / n);
-    return { col, row: col };
-  }
+  _assignHomePositions(items) {
+    const occupancy = [];
+    const isOccupied = (c, r, w, h) => {
+      for (let rr = r; rr < r + h; rr++) {
+        if (!occupancy[rr]) continue;
+        for (let cc = c; cc < c + w; cc++) {
+          if (occupancy[rr][cc]) return true;
+        }
+      }
+      return false;
+    };
+    const place = (c, r, w, h, slug) => {
+      for (let rr = r; rr < r + h; rr++) {
+        if (!occupancy[rr]) occupancy[rr] = [];
+        for (let cc = c; cc < c + w; cc++) {
+          occupancy[rr][cc] = slug;
+        }
+      }
+    };
 
-  _sizeCard(card, col, row) {
-    if (this._mode === 'home') {
-      const [cw, ch] = (card.dataset.size || '1x1').split('x').map(Number);
-      card.style.width = col * cw + this.gutter * (cw - 1) + 'px';
-      card.style.height = row * ch + this.gutter * (ch - 1) + 'px';
-    } else {
-      card.style.width = col + 'px';
-      card.style.height = row + 'px';
+    const placedExplicit = [];
+    const pending = [];
+    for (const it of items) {
+      if (
+        it.col != null &&
+        it.row != null &&
+        it.col >= 0 &&
+        it.col + it.w <= this._numColumns &&
+        !isOccupied(it.col, it.row, it.w, it.h)
+      ) {
+        place(it.col, it.row, it.w, it.h, it.slug);
+        placedExplicit.push(it);
+      } else {
+        pending.push(it);
+      }
+    }
+
+    for (const it of pending) {
+      const { w, h } = it;
+      let placed = false;
+      for (let r = 0; !placed; r++) {
+        for (let c = 0; c + w <= this._numColumns; c++) {
+          if (!isOccupied(c, r, w, h)) {
+            it.col = c;
+            it.row = r;
+            place(c, r, w, h, it.slug);
+            placed = true;
+            break;
+          }
+        }
+        if (r > 500) break;
+      }
+      it._autoPlaced = true;
     }
   }
 
-  _emitOrder() {
-    if (!this.pckry) return;
-    const items = this.pckry.getItemElements();
-    const order = items.map((el, i) => {
-      const badge = el.querySelector('.gc-badge.order');
-      if (badge) badge.textContent = i + 1;
-      return { slug: el.dataset.slug, order: i + 1 };
+  _assignSequentialPositions(items) {
+    for (let i = 0; i < items.length; i++) {
+      const col = i % this._numColumns;
+      const row = Math.floor(i / this._numColumns);
+      items[i].col = col;
+      items[i].row = row;
+      items[i].w = 1;
+      items[i].h = 1;
+    }
+  }
+
+  _buildCard(it, draftSlugs) {
+    const p = it.project;
+    const card = document.createElement('div');
+    card.className = 'gc';
+    card.dataset.slug = it.slug;
+    card.dataset.size = p.home_size || '1x1';
+
+    const thumb = p.thumbnail || '';
+    const draftBadge = draftSlugs && draftSlugs.has(it.slug)
+      ? '<span class="gc-badge draft">RASCUNHO</span>'
+      : '';
+    card.innerHTML = `
+      <img src="${escAttr(thumb)}" alt="" class="gc-img" loading="lazy" />
+      <div class="gc-info">
+        <span class="gc-title">${esc(p.title)}</span>
+        <span class="gc-client">${esc(p.client)}</span>
+      </div>
+      <div class="gc-badges">
+        <span class="gc-badge order">${it.order ?? '–'}</span>
+        <span class="gc-badge size">${p.home_size || '1x1'}</span>
+        ${p.show_on_home ? '<span class="gc-badge home">HOME</span>' : ''}
+        ${draftBadge}
+      </div>
+      <div class="gc-handle" title="Arrastar para reordenar">⠿</div>`;
+
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.gc-handle')) return;
+      if (card.dataset.dragging === '1') return;
+      this._onClick?.(p);
     });
-    this._onReorder?.(order);
+
+    const imgEl = card.querySelector('.gc-img');
+    if (imgEl) {
+      imgEl.addEventListener('error', () => {
+        imgEl.style.display = 'none';
+      });
+    }
+
+    return card;
+  }
+
+  _positionCard(card, it) {
+    const step = this._col + this.gutter;
+    const stepR = this._row + this.gutter;
+    card.style.position = 'absolute';
+    card.style.left = it.col * step + 'px';
+    card.style.top = it.row * stepR + 'px';
+    card.style.width = it.w * this._col + (it.w - 1) * this.gutter + 'px';
+    card.style.height = it.h * this._row + (it.h - 1) * this.gutter + 'px';
+  }
+
+  _updateContainerHeight() {
+    let maxRow = 0;
+    for (const it of this._items) {
+      maxRow = Math.max(maxRow, it.row + it.h);
+    }
+    const h = maxRow * (this._row + this.gutter);
+    this.el.style.minHeight = h + 'px';
+  }
+
+  _attachDrags() {
+    if (typeof Draggabilly === 'undefined') return;
+    this.drags = [];
+    for (const it of this._items) {
+      const card = this._cardBySlug.get(it.slug);
+      if (!card) continue;
+      const d = new Draggabilly(card, { handle: '.gc-handle' });
+      d.on('dragStart', () => this._onDragStart(it, card));
+      d.on('dragMove', () => { card.dataset.dragging = '1'; });
+      d.on('dragEnd', () => this._onDragEnd(it, card));
+      this.drags.push(d);
+    }
+  }
+
+  _onDragStart(it, card) {
+    this._dragStartPos = { col: it.col, row: it.row };
+    card.classList.add('is-dragging');
+  }
+
+  _onDragEnd(it, card) {
+    card.classList.remove('is-dragging');
+    setTimeout(() => { card.dataset.dragging = '0'; }, 0);
+
+    const stepC = this._col + this.gutter;
+    const stepR = this._row + this.gutter;
+    const left = parseFloat(card.style.left) || 0;
+    const top = parseFloat(card.style.top) || 0;
+    let newCol = Math.round(left / stepC);
+    let newRow = Math.round(top / stepR);
+
+    newCol = Math.max(0, Math.min(newCol, this._numColumns - it.w));
+    newRow = Math.max(0, newRow);
+
+    if (newCol === it.col && newRow === it.row) {
+      this._positionCard(card, it);
+      return;
+    }
+
+    const changed = this._applyDropWithSwap(it, newCol, newRow);
+    if (!changed) {
+      this._positionCard(card, it);
+      this._toast?.('Não foi possível encaixar aí — posição revertida.');
+      return;
+    }
+
+    for (const { slug } of changed) {
+      const c = this._cardBySlug.get(slug);
+      const target = this._items.find((x) => x.slug === slug);
+      if (c && target) this._positionCard(c, target);
+    }
+
+    if (this._mode === 'home') {
+      this._onGridChange?.(
+        changed.map((c) => ({
+          slug: c.slug,
+          home_col: c.col,
+          home_row: c.row,
+        })),
+      );
+    } else {
+      const ordered = this._items
+        .slice()
+        .sort((a, b) => (a.row - b.row) || (a.col - b.col))
+        .map((x, i) => ({ slug: x.slug, order: i + 1 }));
+      this._items.forEach((x) => {
+        const found = ordered.find((o) => o.slug === x.slug);
+        if (found) x.order = found.order;
+        const c = this._cardBySlug.get(x.slug);
+        const badge = c?.querySelector('.gc-badge.order');
+        if (badge && found) badge.textContent = String(found.order);
+      });
+      this._onOrderChange?.(ordered);
+    }
+
+    this._updateContainerHeight();
+  }
+
+  /**
+   * Try to place `dragged` at (newCol,newRow). If it overlaps exactly one other
+   * item and the swap keeps everything inside bounds and non-overlapping,
+   * commit the swap. Otherwise return null.
+   *
+   * @returns {Array<{slug:string,col:number,row:number}> | null}
+   */
+  _applyDropWithSwap(dragged, newCol, newRow) {
+    const newRect = { col: newCol, row: newRow, w: dragged.w, h: dragged.h };
+
+    if (newCol + dragged.w > this._numColumns) return null;
+    if (newCol < 0 || newRow < 0) return null;
+
+    const colliders = this._items.filter(
+      (x) => x.slug !== dragged.slug && rectsIntersect(newRect, x),
+    );
+
+    if (colliders.length === 0) {
+      dragged.col = newCol;
+      dragged.row = newRow;
+      return [{ slug: dragged.slug, col: dragged.col, row: dragged.row }];
+    }
+
+    if (colliders.length !== 1) return null;
+    const other = colliders[0];
+
+    const oldCol = this._dragStartPos?.col ?? dragged.col;
+    const oldRow = this._dragStartPos?.row ?? dragged.row;
+
+    if (oldCol + other.w > this._numColumns) return null;
+
+    const swapRectForOther = { col: oldCol, row: oldRow, w: other.w, h: other.h };
+    const overlaps = this._items.some(
+      (x) =>
+        x.slug !== dragged.slug &&
+        x.slug !== other.slug &&
+        rectsIntersect(swapRectForOther, x),
+    );
+    if (overlaps) return null;
+
+    dragged.col = newCol;
+    dragged.row = newRow;
+    other.col = oldCol;
+    other.row = oldRow;
+
+    return [
+      { slug: dragged.slug, col: dragged.col, row: dragged.row },
+      { slug: other.slug, col: other.col, row: other.row },
+    ];
+  }
+
+  _calcCol() {
+    const w = this.el.clientWidth;
+    const n = Math.max(2, Math.round(w / 210));
+    const col = Math.floor((w - (n - 1) * this.gutter) / n);
+    return { col, row: col, columns: n };
   }
 
   _onWindowResize() {
@@ -169,35 +359,56 @@ class GridManager {
   }
 
   relayout() {
-    if (!this.pckry) return;
-    const { col, row } = this._calcCol();
-    this.el.querySelectorAll('.gc').forEach((c) => this._sizeCard(c, col, row));
-    this.pckry.options.columnWidth = col;
-    this.pckry.options.rowHeight = row;
-    this.pckry.layout();
+    const { col, row, columns } = this._calcCol();
+    this._col = col;
+    this._row = row;
+
+    if (columns !== this._numColumns) {
+      this._numColumns = columns;
+      for (const it of this._items) {
+        if (it.col + it.w > columns) it.col = Math.max(0, columns - it.w);
+      }
+    }
+
+    for (const it of this._items) {
+      const c = this._cardBySlug.get(it.slug);
+      if (c) this._positionCard(c, it);
+    }
+    this._updateContainerHeight();
   }
 
-  onReorder(fn) {
-    this._onReorder = fn;
+  /**
+   * Called by admin-app when it wants to expose auto-placed positions as
+   * pending draft changes (so `Publicar` persists them to the DB).
+   */
+  getAutoPlacedPositions() {
+    return this._items
+      .filter((it) => it._autoPlaced)
+      .map((it) => ({ slug: it.slug, home_col: it.col, home_row: it.row }));
   }
 
-  onClick(fn) {
-    this._onClick = fn;
-  }
+  onGridChange(fn) { this._onGridChange = fn; }
+  onOrderChange(fn) { this._onOrderChange = fn; }
+  onClick(fn) { this._onClick = fn; }
+  onWarn(fn) { this._toast = fn; }
 
   destroy() {
     window.removeEventListener('resize', this._boundResize);
     clearTimeout(this._resizeTimer);
-    if (this.pckry) {
-      this.pckry.off('dragItemPositioned', this._boundDragItemPositioned);
-    }
     this.drags.forEach((d) => d.destroy());
     this.drags = [];
-    if (this.pckry) {
-      this.pckry.destroy();
-      this.pckry = null;
-    }
+    this._items = [];
+    this._cardBySlug.clear();
   }
+}
+
+function rectsIntersect(a, b) {
+  return (
+    a.col < b.col + b.w &&
+    a.col + a.w > b.col &&
+    a.row < b.row + b.h &&
+    a.row + a.h > b.row
+  );
 }
 
 function slugFromUrl(url) {

@@ -1,137 +1,142 @@
-// Packery Masonry Initialization
-let packeryInstance = null;
+// Home masonry — free 2D layout driven by (data-col, data-row, data-size).
+// The admin CMS writes absolute grid coords; Packery is only a fallback if any
+// item is rendered without coords (e.g. fresh data before the first publish).
 let resizeTimeout = null;
-/** layoutComplete fires on every relayout; entrance stagger should run only once. */
 let homeEntranceAnimationDone = false;
+let packeryInstance = null;
+
+const BASE_ITEM = 200;
+const GUTTER = 4;
+const MIN_COL = 150;
 
 function calculateColumnWidth(container) {
-  // Get actual available width (accounting for padding)
   const containerWidth = container.offsetWidth;
-  const gutter = 4;
-  const baseItemWidth = 200; // Base unit for sizing
-  
-  // Calculate how many base columns can fit
-  // Formula: (containerWidth + gutter) / (baseItemWidth + gutter)
-  const columns = Math.max(1, Math.floor((containerWidth + gutter) / (baseItemWidth + gutter)));
-  
-  // Calculate actual columnWidth to fill container exactly
-  // Formula: (containerWidth - (gutter * (columns - 1))) / columns
-  const columnWidth = Math.floor((containerWidth - (gutter * (columns - 1))) / columns);
-  
-  // Ensure minimum size
-  const minColumnWidth = 150;
-  const finalColumnWidth = Math.max(minColumnWidth, columnWidth);
-  
-  return { columnWidth: finalColumnWidth, rowHeight: finalColumnWidth, columns };
+  const columns = Math.max(
+    1,
+    Math.floor((containerWidth + GUTTER) / (BASE_ITEM + GUTTER)),
+  );
+  const rawCol = Math.floor((containerWidth - GUTTER * (columns - 1)) / columns);
+  const columnWidth = Math.max(MIN_COL, rawCol);
+  return { columnWidth, rowHeight: columnWidth, columns };
 }
 
-function initMasonry() {
-  // Check if Packery is loaded
+function parseSize(item) {
+  const [w, h] = (item.getAttribute('data-size') || '1x1').split('x').map(Number);
+  return { w: w || 1, h: h || 1 };
+}
+
+function parseCoords(item) {
+  const c = item.getAttribute('data-col');
+  const r = item.getAttribute('data-row');
+  if (c === null || r === null) return null;
+  const col = parseInt(c, 10);
+  const row = parseInt(r, 10);
+  if (Number.isNaN(col) || Number.isNaN(row)) return null;
+  return { col, row };
+}
+
+function allItemsHaveCoords(items) {
+  for (const it of items) {
+    if (!parseCoords(it)) return false;
+  }
+  return true;
+}
+
+function sizeItem(item, columnWidth, rowHeight) {
+  const { w, h } = parseSize(item);
+  item.style.width = w * columnWidth + (w - 1) * GUTTER + 'px';
+  item.style.height = h * rowHeight + (h - 1) * GUTTER + 'px';
+}
+
+function positionItem(item, columnWidth, rowHeight) {
+  const { col, row } = parseCoords(item) || { col: 0, row: 0 };
+  item.style.position = 'absolute';
+  item.style.left = col * (columnWidth + GUTTER) + 'px';
+  item.style.top = row * (rowHeight + GUTTER) + 'px';
+}
+
+function applyFreeLayout(grid, columnWidth, rowHeight) {
+  const items = Array.from(grid.querySelectorAll('.project-item'));
+  let maxBottom = 0;
+  items.forEach((item) => {
+    sizeItem(item, columnWidth, rowHeight);
+    positionItem(item, columnWidth, rowHeight);
+    const { row } = parseCoords(item) || { row: 0 };
+    const { h } = parseSize(item);
+    maxBottom = Math.max(maxBottom, (row + h) * (rowHeight + GUTTER) - GUTTER);
+  });
+  grid.style.position = 'relative';
+  grid.style.minHeight = maxBottom + 'px';
+}
+
+function runEntranceAnimation(grid) {
+  if (homeEntranceAnimationDone) return;
+  homeEntranceAnimationDone = true;
+
+  const items = Array.from(grid.querySelectorAll('.project-item'));
+  items.sort((a, b) => {
+    const orderA = parseInt(a.getAttribute('data-order'), 10) || 999;
+    const orderB = parseInt(b.getAttribute('data-order'), 10) || 999;
+    return orderA - orderB;
+  });
+
+  if (typeof gsap !== 'undefined') {
+    gsap.set(items, { opacity: 0 });
+    gsap.to(items, {
+      opacity: 1,
+      duration: 0.35,
+      stagger: 0.035,
+      ease: 'power2.out',
+    });
+  } else {
+    items.forEach((item, index) => {
+      setTimeout(() => { item.style.opacity = '1'; }, index * 40);
+    });
+  }
+}
+
+function initPackeryFallback(grid, columnWidth, rowHeight) {
   if (typeof Packery === 'undefined') {
-    console.warn('Packery not loaded, loading from CDN...');
-    loadPackery();
+    loadPackery(() => initPackeryFallback(grid, columnWidth, rowHeight));
     return;
   }
-
-  const container = document.getElementById('masonry-container');
-  if (!container) {
-    console.warn('Masonry container not found');
-    return;
-  }
-
-  // Destroy existing instance if any
   if (packeryInstance) {
     packeryInstance.destroy();
     packeryInstance = null;
   }
+  Array.from(grid.querySelectorAll('.project-item')).forEach((item) =>
+    sizeItem(item, columnWidth, rowHeight),
+  );
+  packeryInstance = new Packery(grid, {
+    itemSelector: '.project-item',
+    gutter: GUTTER,
+    columnWidth,
+    rowHeight,
+    percentPosition: false,
+  });
+  packeryInstance.on('layoutComplete', () => runEntranceAnimation(grid));
+  packeryInstance.layout();
+}
 
-  homeEntranceAnimationDone = false;
+function initMasonry() {
+  const container = document.getElementById('masonry-container');
+  if (!container) return;
 
   const runInit = () => {
     const grid = container.querySelector('.projects-grid');
-    if (!grid) {
-      console.warn('Projects grid not found');
-      return;
+    if (!grid) return;
+
+    const { columnWidth, rowHeight } = calculateColumnWidth(container);
+    const items = Array.from(grid.querySelectorAll('.project-item'));
+
+    if (items.length && allItemsHaveCoords(items)) {
+      if (packeryInstance) { packeryInstance.destroy(); packeryInstance = null; }
+      applyFreeLayout(grid, columnWidth, rowHeight);
+      runEntranceAnimation(grid);
+    } else {
+      initPackeryFallback(grid, columnWidth, rowHeight);
     }
 
-    // Calculate dynamic column width
-    const { columnWidth, rowHeight } = calculateColumnWidth(container);
-    const gutter = 4;
-
-    // Map home_size to Packery item sizes BEFORE initializing Packery
-    const items = grid.querySelectorAll('.project-item');
-    items.forEach((item) => {
-      const size = item.getAttribute('data-size') || '1x1';
-      const [width, height] = size.split('x').map(Number);
-      
-      // Set item size based on home_size
-      if (width === 2 && height === 2) {
-        // 2x2: Large square
-        item.style.width = (columnWidth * 2 + gutter) + 'px';
-        item.style.height = (rowHeight * 2) + 'px';
-      } else if (width === 2 && height === 1) {
-        // 2x1: Wide
-        item.style.width = (columnWidth * 2 + gutter) + 'px';
-        item.style.height = rowHeight + 'px';
-      } else if (width === 1 && height === 2) {
-        // 1x2: Tall
-        item.style.width = columnWidth + 'px';
-        item.style.height = (rowHeight * 2) + 'px';
-      } else {
-        // 1x1: Default
-        item.style.width = columnWidth + 'px';
-        item.style.height = rowHeight + 'px';
-      }
-    });
-
-    // Initialize Packery with calculated columnWidth
-    packeryInstance = new Packery(grid, {
-      itemSelector: '.project-item',
-      gutter: gutter,
-      columnWidth: columnWidth,
-      rowHeight: rowHeight,
-      percentPosition: false
-    });
-
-    // Layout complete callback (fires on every layout — only stagger once)
-    packeryInstance.on('layoutComplete', () => {
-      if (homeEntranceAnimationDone) return;
-      homeEntranceAnimationDone = true;
-
-      // Animate items in with GSAP
-      if (typeof gsap !== 'undefined') {
-        const items = Array.from(grid.querySelectorAll('.project-item'));
-        // Sort by data-order (portfolio order) for stagger animation
-        items.sort((a, b) => {
-          const orderA = parseInt(a.getAttribute('data-order'), 10) || 999;
-          const orderB = parseInt(b.getAttribute('data-order'), 10) || 999;
-          return orderA - orderB;
-        });
-
-        gsap.set(items, { opacity: 0 });
-
-        // Do not clearProps('opacity'): .project-item { opacity: 0 } in CSS would win and tiles would vanish.
-        gsap.to(items, {
-          opacity: 1,
-          duration: 0.35,
-          stagger: 0.035,
-          ease: 'power2.out'
-        });
-      } else {
-        // Fallback: just show items
-        const items = grid.querySelectorAll('.project-item');
-        items.forEach((item, index) => {
-          setTimeout(() => {
-            item.style.opacity = '1';
-          }, index * 40);
-        });
-      }
-    });
-
-    // Trigger initial layout
-    packeryInstance.layout();
-
-    // Handle window resize - recalculate columnWidth
     window.removeEventListener('resize', handleResize);
     window.addEventListener('resize', handleResize);
   };
@@ -142,66 +147,35 @@ function initMasonry() {
 function handleResize() {
   clearTimeout(resizeTimeout);
   resizeTimeout = setTimeout(() => {
-    if (!packeryInstance) return;
-    
     const container = document.getElementById('masonry-container');
     if (!container) return;
-    
     const grid = container.querySelector('.projects-grid');
     if (!grid) return;
-    
-    // Recalculate column width
+
     const { columnWidth, rowHeight } = calculateColumnWidth(container);
-    const gutter = 4;
-    
-    // Update Packery options
-    packeryInstance.options.columnWidth = columnWidth;
-    packeryInstance.options.rowHeight = rowHeight;
-    
-    // Update all item sizes
-    const items = grid.querySelectorAll('.project-item');
-    items.forEach((item) => {
-      const size = item.getAttribute('data-size') || '1x1';
-      const [width, height] = size.split('x').map(Number);
-      
-      if (width === 2 && height === 2) {
-        item.style.width = (columnWidth * 2 + gutter) + 'px';
-        item.style.height = (rowHeight * 2) + 'px';
-      } else if (width === 2 && height === 1) {
-        item.style.width = (columnWidth * 2 + gutter) + 'px';
-        item.style.height = rowHeight + 'px';
-      } else if (width === 1 && height === 2) {
-        item.style.width = columnWidth + 'px';
-        item.style.height = (rowHeight * 2) + 'px';
-      } else {
-        item.style.width = columnWidth + 'px';
-        item.style.height = rowHeight + 'px';
-      }
-    });
-    
-    // Relayout
-    packeryInstance.layout();
+    const items = Array.from(grid.querySelectorAll('.project-item'));
+
+    if (items.length && allItemsHaveCoords(items)) {
+      applyFreeLayout(grid, columnWidth, rowHeight);
+    } else if (packeryInstance) {
+      packeryInstance.options.columnWidth = columnWidth;
+      packeryInstance.options.rowHeight = rowHeight;
+      items.forEach((item) => sizeItem(item, columnWidth, rowHeight));
+      packeryInstance.layout();
+    }
   }, 250);
 }
 
-function loadPackery() {
+function loadPackery(cb) {
   const script = document.createElement('script');
   script.src = 'https://cdn.jsdelivr.net/npm/packery@2.1.2/dist/packery.pkgd.min.js';
-  script.onload = () => {
-    console.log('Packery loaded, initializing...');
-    initMasonry();
-  };
-  script.onerror = () => {
-    console.error('Failed to load Packery');
-  };
+  script.onload = () => cb && cb();
+  script.onerror = () => console.error('Failed to load Packery');
   document.head.appendChild(script);
 }
 
-// Auto-initialize if DOM is ready, otherwise wait
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    // Don't auto-init, wait for intro animation to complete
+    // Intro animation decides when to call initMasonry().
   });
-} else {
-  // DOM already ready, but wait for intro animation
 }

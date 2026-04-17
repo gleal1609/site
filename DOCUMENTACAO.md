@@ -154,6 +154,7 @@ Campos usados pelo site (ver também `README.md` e `projects.json`):
 | `show_on_home` | `true` para aparecer na masonry da home |
 | `order` | Ordem no portfólio (home masonry e listagem `/projetos/` por padrão) |
 | `home_size` | Tamanho no grid (ex.: `1x1`, `2x2`) — consumido pelo JS de masonry |
+| `home_col` / `home_row` | Coordenadas fixas na grelha da Home (inteiros, 0-indexadas). Quando ambas presentes, o site renderiza em layout livre. Se `null`, o site cai no Packery como fallback |
 | `youtube_url` / `pixieset_url` | Opcionais na página de detalhe |
 
 **Convenção de nome do arquivo:** `YYMMDD-NomeProjeto-Cliente.md` (sem acentos no nome do arquivo); caminhos de mídia seguem o padrão descrito no `README.md`.
@@ -169,7 +170,8 @@ Arquivo Jekyll com `layout: null` e `permalink: /projects.json`. Gera um **array
 O painel em **`/admin/`** é um **Visual Portfolio CMS** customizado — uma SPA (single-page application) que simula o grid masonry da home e permite **arrastar para reordenar**, **clicar para editar** todos os campos e **criar/excluir** projetos. O backend é o **Cloudflare Worker** (`cms.reversofilmes.com.br`). Login usa **GitHub OAuth** via redirect completo ao Worker (que troca o código com GitHub e emite JWT em cookie httpOnly).
 
 **Stack do painel (zero build step, CDN):**
-- **Packery 2.1.2** + **Draggabilly 3.0.0** — grid masonry com drag-and-drop
+- **Draggabilly 3.0.0** — drag-and-drop dos cartões (sem packing; posições 2D livres)
+- **Packery 2.1.2** — *somente fallback* no site público quando algum projeto ainda não tem `home_col`/`home_row`; o admin já não usa Packery
 - **Alpine.js 3.14.9** — reatividade para formulários e estado
 - **EasyMDE 2.18.0** — editor Markdown para o campo `body`
 - **Cloudflare Worker API** — CRUD, upload de mídia, autenticação, deploy hook
@@ -190,14 +192,15 @@ admin/
 ```
 
 **Funcionalidades principais:**
-- **Grid visual** com thumbnails reais e tamanhos (`home_size`: 1x1, 1x2, 2x1, 2x2)
-- **Dois modos**: "Home" (só `show_on_home: true`, masonry) e "Todos" (grid uniforme)
-- **Drag-and-drop**: arrastar cards para reordenar; a posição define `order` automaticamente
-- **Editor lateral**: todos os campos do front matter, upload de mídia, editor Markdown
-- **Reordenação em batch**: arrastar cards para reordenar; salva todas as posições via `POST /api/projects/reorder`
-- **Criar / Excluir** projetos com cleanup de mídia em R2
-- **Optimistic locking**: campo `version` em cada projeto; 409 Conflict se editado por outro utilizador
-- **Deploy hook**: dispara rebuild no Netlify após alterações em projetos publicados (debounce 5 min)
+- **Grid visual 2D livre** na Home: cada cartão tem posição fixa `(home_col, home_row)` + tamanho `home_size` (1×1, 1×2, 2×1, 2×2). Nada é reempacotado automaticamente.
+- **Swap no drop**: soltar um cartão em cima de outro troca as posições dos dois; outros não se movem.
+- **Aba "Todos"**: grid sequencial 1×1 ordenado por `order`; drag também funciona como swap.
+- **Editor lateral**: todos os campos do front matter, upload de mídia, editor Markdown.
+- **Modelo "rascunho → Publicar"**: alterações ficam em memória no browser. Drag só move localmente; "Salvar Layout" inclui na publicação. "Publicar" faz todos os PATCH/POST/reorder em sequência e um `POST /api/deploy`.
+- **Auto-pack inicial**: projetos novos ou com `home_col/home_row` nulos recebem uma posição via first-fit; a atribuição entra como rascunho pendente e vira persistente no próximo "Publicar".
+- **Criar / Excluir** projetos com cleanup de mídia em R2.
+- **Optimistic locking**: campo `version` em cada projeto; 409 Conflict se editado por outro utilizador.
+- **Deploy hook**: disparado **uma só vez** por "Publicar" (debounce global de 5 min continua a proteger o Netlify).
 
 ### 3.1 Fluxo de dados
 
@@ -655,6 +658,26 @@ npm run token:build
 ```
 
 O comando imprime uma linha longa (JWT): use em `BUILD_TOKEN` / `CF_BUILD_TOKEN` e em `wrangler secret put BUILD_TOKEN`.
+
+### 10.3b Atualizar schema para o layout 2D livre (migration 0003)
+
+A partir da versão com layout 2D livre, a tabela `projects` tem as colunas `home_col` e `home_row` (INTEGER, `NULL` quando a posição ainda não foi atribuída). A migration é `cf-worker/migrations/0003_home_grid_position.sql`. Aplicação:
+
+```bash
+cd cf-worker
+
+# Produção
+wrangler d1 migrations apply reverso-db --remote
+
+# Desenvolvimento local
+wrangler d1 migrations apply reverso-db --local
+```
+
+**Comportamento na primeira utilização após a migração:**
+
+- Projetos existentes ficam com `home_col` / `home_row` = `NULL`. O admin executa um *first-fit packing* inicial (equivalente ao Packery antigo) no render, marca essas posições como **rascunho pendente** e espera um `Publicar` para gravá-las.
+- O site público (`assets/js/masonry-init.js`) continua a cair no Packery enquanto **algum** item não tiver ambos os campos preenchidos; quando todos estiverem, passa a usar o layout absoluto 1-para-1 com o admin.
+- Depois do primeiro `Publicar`, não há mais reempacotamento automático: cada cartão fica onde o utilizador o soltou.
 
 ### 10.4 Migração de dados
 

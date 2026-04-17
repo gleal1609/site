@@ -45,8 +45,9 @@ function adminApp() {
     saving: false,
 
     view: 'home',
-    pendingOrder: [],
-    /** Itens `{ slug, order }` a enviar em POST /reorder na publicação (vs. baseline) */
+    /** Map slug → { home_col?, home_row?, order? } — arrastes ainda não confirmados */
+    pendingMoves: {},
+    /** Lista `{ slug, home_col?, home_row?, order? }` a enviar em POST /reorder na publicação */
     reorderDraft: [],
 
     /** @type {Record<string, { payload: object, thumbFile: File|null, videoFile: File|null, isNew: boolean, version?: number }>} */
@@ -144,6 +145,7 @@ function adminApp() {
       this.projects = [];
       this.baselineProjects = [];
       this.reorderDraft = [];
+      this.pendingMoves = {};
       this.projectDrafts = {};
       this.editorOpen = false;
       this._grid?.destroy();
@@ -203,9 +205,9 @@ function adminApp() {
       if (!this._grid) {
         this._grid = new GridManager(container);
         this._grid.onClick((p) => this.openEditor(p));
-        this._grid.onReorder((order) => {
-          this.pendingOrder = order;
-        });
+        this._grid.onGridChange((moves) => this._onGridMoves(moves));
+        this._grid.onOrderChange((items) => this._onOrderMoves(items));
+        this._grid.onWarn((msg) => this._toast(msg, 'warning'));
       }
 
       const list =
@@ -214,7 +216,52 @@ function adminApp() {
           : [...this.projects];
 
       this._grid.render(list, this.view, { draftSlugs: this._draftSlugSet() });
-      this.pendingOrder = [];
+
+      if (this.view === 'home') {
+        const autoPlaced = this._grid.getAutoPlacedPositions() || [];
+        if (autoPlaced.length) {
+          autoPlaced.forEach(({ slug, home_col, home_row }) => {
+            const p = this.projects.find((x) => x._slug === slug);
+            if (p) {
+              p.home_col = home_col;
+              p.home_row = home_row;
+            }
+            this.pendingMoves[slug] = {
+              ...(this.pendingMoves[slug] || {}),
+              home_col,
+              home_row,
+            };
+          });
+        }
+      }
+    },
+
+    _onGridMoves(moves) {
+      if (!Array.isArray(moves) || !moves.length) return;
+      for (const m of moves) {
+        const p = this.projects.find((x) => x._slug === m.slug);
+        if (p) {
+          p.home_col = m.home_col;
+          p.home_row = m.home_row;
+        }
+        this.pendingMoves[m.slug] = {
+          ...(this.pendingMoves[m.slug] || {}),
+          home_col: m.home_col,
+          home_row: m.home_row,
+        };
+      }
+    },
+
+    _onOrderMoves(items) {
+      if (!Array.isArray(items) || !items.length) return;
+      for (const it of items) {
+        const p = this.projects.find((x) => x._slug === it.slug);
+        if (p) p.order = it.order;
+        this.pendingMoves[it.slug] = {
+          ...(this.pendingMoves[it.slug] || {}),
+          order: it.order,
+        };
+      }
     },
 
     setView(v) {
@@ -223,18 +270,35 @@ function adminApp() {
     },
 
     get hasPendingOrder() {
-      return this.pendingOrder.length > 0;
+      return Object.keys(this.pendingMoves).length > 0;
     },
 
     get homeProjectCount() {
       return this.projects.filter((p) => p.show_on_home).length;
     },
 
+    _movesDelta() {
+      const delta = [];
+      for (const [slug, m] of Object.entries(this.pendingMoves)) {
+        const baseline = this.baselineProjects.find((x) => x._slug === slug);
+        if (!baseline) continue;
+        const changed = {};
+        if (m.home_col !== undefined && m.home_col !== baseline.home_col) {
+          changed.home_col = m.home_col;
+        }
+        if (m.home_row !== undefined && m.home_row !== baseline.home_row) {
+          changed.home_row = m.home_row;
+        }
+        if (m.order !== undefined && m.order !== baseline.order) {
+          changed.order = m.order;
+        }
+        if (Object.keys(changed).length) delta.push({ slug, ...changed });
+      }
+      return delta;
+    },
+
     get pendingCount() {
-      return this.pendingOrder.filter((o) => {
-        const p = this.projects.find((x) => x._slug === o.slug);
-        return p && p.order !== o.order;
-      }).length;
+      return this._movesDelta().length;
     },
 
     get hasStagedOrder() {
@@ -261,8 +325,9 @@ function adminApp() {
 
     get unpublishedSummary() {
       const parts = [];
-      if (this.pendingCount > 0) parts.push('ordem não confirmada');
-      if (this.hasStagedOrder) parts.push('ordem em rascunho');
+      const pc = this.pendingCount;
+      if (pc > 0) parts.push(pc === 1 ? 'posição não confirmada' : `${pc} posições não confirmadas`);
+      if (this.hasStagedOrder) parts.push('layout em rascunho');
       if (this.hasStagedProjects) {
         const n = Object.keys(this.projectDrafts).length;
         parts.push(n === 1 ? '1 projeto em rascunho' : `${n} projetos em rascunho`);
@@ -272,34 +337,31 @@ function adminApp() {
     },
 
     saveOrder() {
-      if (!this.pendingCount) return;
-
-      this.pendingOrder.forEach(({ slug, order }) => {
-        const p = this.projects.find((x) => x._slug === slug);
-        if (p) p.order = order;
-      });
-
-      const items = this.pendingOrder
-        .filter((o) => {
-          const baseline = this.baselineProjects.find((x) => x._slug === o.slug);
-          return baseline && baseline.order !== o.order;
-        })
-        .map((o) => ({ slug: o.slug, order: o.order }));
-
-      if (!items.length) {
-        this.pendingOrder = [];
+      const delta = this._movesDelta();
+      if (!delta.length) {
+        this.pendingMoves = {};
         this._renderGrid();
         return;
       }
 
-      this.reorderDraft = items;
-      this.pendingOrder = [];
+      const byKey = {};
+      [...this.reorderDraft, ...delta].forEach((it) => {
+        byKey[it.slug] = { ...(byKey[it.slug] || { slug: it.slug }), ...it };
+      });
+      this.reorderDraft = Object.values(byKey);
+
+      this.pendingMoves = {};
       this._renderGrid();
-      this._toast('Ordem incluída na publicação pendente.', 'success');
+      this._toast(`${delta.length} alteração(ões) de layout incluída(s) na publicação.`, 'success');
     },
 
     discardPendingOrder() {
-      this.pendingOrder = [];
+      this.pendingMoves = {};
+      this.projects = this._cloneProjects(this.baselineProjects);
+      this.projects.forEach((p) => {
+        p._slug = p.slug;
+        if (!p.url) p.url = `/projects/${p.slug}/`;
+      });
       this._renderGrid();
     },
 
@@ -569,12 +631,17 @@ function adminApp() {
       if (!this.isNew) {
         const p = this.projects.find((x) => x._slug === this.form._slug);
         if (p) {
+          const sizeChanged = p.home_size !== (this.form.home_size || '1x1');
           p.title = this.form.title;
           p.show_on_home = !!this.form.show_on_home;
           p.home_size = this.form.home_size || '1x1';
           p.client = this.form.client || '';
           if (this.form.thumbnail) p.thumbnail = this.form.thumbnail;
           if (this.form.hover_preview) p.hover_preview = this.form.hover_preview;
+          if (sizeChanged) {
+            p.home_col = null;
+            p.home_row = null;
+          }
         }
       }
 

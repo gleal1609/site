@@ -127,12 +127,13 @@
           <p class="empty-state-hint">A aba «Home» só lista projetos com «Mostrar na Home». Use «Todos» ou edite um projeto e marque essa opção.</p>
         </div>
 
-        <!-- Pending order: confirmar para incluir na publicação -->
+        <!-- Pending layout: confirmar para incluir na publicação -->
         <div x-show="hasPendingOrder && pendingCount > 0" x-transition class="save-bar">
-          <span x-text="`${pendingCount} alteração(ões) de ordem não confirmada(s) — use «Salvar Ordem» para incluir na publicação.`"></span>
-          <button type="button" @click="saveOrder()" class="btn btn-primary">
-            Salvar Ordem
-          </button>
+          <span x-text="view === 'home'
+            ? `${pendingCount} posição(ões) não confirmada(s) — use «Salvar Layout» para incluir na publicação.`
+            : `${pendingCount} alteração(ões) de ordem não confirmada(s) — use «Salvar Ordem» para incluir na publicação.`"></span>
+          <button type="button" @click="saveOrder()" class="btn btn-primary"
+                  x-text="view === 'home' ? 'Salvar Layout' : 'Salvar Ordem'"></button>
           <button type="button" @click="discardPendingOrder()" class="btn btn-secondary">
             Descartar
           </button>

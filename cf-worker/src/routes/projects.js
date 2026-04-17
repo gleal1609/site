@@ -66,6 +66,7 @@ export async function handleExport(env) {
   const { results } = await env.DB.prepare(
     `SELECT slug, title, body_md, description, thumbnail, hover_preview, service_types,
             client, date_mmddyyyy, year, show_on_home, "order", home_size,
+            home_col, home_row,
             youtube_url, pixieset_url
      FROM projects WHERE published = 1
      ORDER BY "order" ASC, date_mmddyyyy DESC`,
@@ -88,6 +89,7 @@ export async function handleList(env) {
   const { results } = await env.DB.prepare(
     `SELECT id, slug, title, thumbnail, hover_preview, service_types,
             client, date_mmddyyyy, year, show_on_home, "order", home_size,
+            home_col, home_row,
             youtube_url, pixieset_url, published, version, body_md, description,
             created_at, updated_at
      FROM projects ORDER BY "order" ASC`,
@@ -151,8 +153,8 @@ export async function handleCreate(request, env, ctx) {
   await env.DB.prepare(
     `INSERT INTO projects (slug, title, body_md, description, thumbnail, hover_preview,
       service_types, client, date_mmddyyyy, year, show_on_home, "order",
-      home_size, youtube_url, pixieset_url, published)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      home_size, home_col, home_row, youtube_url, pixieset_url, published)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     data.slug, data.title, data.body_md || null,
     data.description != null ? String(data.description) : null,
@@ -160,6 +162,8 @@ export async function handleCreate(request, env, ctx) {
     svcJson, data.client || null, data.date_mmddyyyy || null,
     data.year || null, data.show_on_home ? 1 : 0,
     data.order || 0, data.home_size || '1x1',
+    Number.isInteger(data.home_col) ? data.home_col : null,
+    Number.isInteger(data.home_row) ? data.home_row : null,
     data.youtube_url || null, data.pixieset_url || null,
     data.published ? 1 : 0,
   ).run();
@@ -233,6 +237,7 @@ export async function handleUpdate(slug, request, env, ctx) {
   const updatable = [
     'title', 'body_md', 'description', 'thumbnail', 'hover_preview', 'client',
     'date_mmddyyyy', 'year', 'show_on_home', 'order', 'home_size',
+    'home_col', 'home_row',
     'youtube_url', 'pixieset_url', 'published',
   ];
 
@@ -312,15 +317,43 @@ export async function handleReorder(request, env, ctx) {
     if (typeof it.slug !== 'string' || !SLUG_PATH_RE.test(it.slug)) {
       return error(`items[${i}].slug invalid`, 400);
     }
-    if (!Number.isInteger(it.order)) {
+    const hasOrder = it.order !== undefined;
+    const hasGrid = it.home_col !== undefined || it.home_row !== undefined;
+    if (!hasOrder && !hasGrid) {
+      return error(`items[${i}] requires order and/or home_col/home_row`, 400);
+    }
+    if (hasOrder && !Number.isInteger(it.order)) {
       return error(`items[${i}].order must be integer`, 400);
+    }
+    if (it.home_col !== undefined && it.home_col !== null && !Number.isInteger(it.home_col)) {
+      return error(`items[${i}].home_col must be integer or null`, 400);
+    }
+    if (it.home_row !== undefined && it.home_row !== null && !Number.isInteger(it.home_row)) {
+      return error(`items[${i}].home_row must be integer or null`, 400);
     }
   }
 
-  const stmts = items.map(({ slug, order }) =>
-    env.DB.prepare('UPDATE projects SET "order" = ?, updated_at = datetime(\'now\') WHERE slug = ?')
-      .bind(order, slug),
-  );
+  const stmts = items.map((it) => {
+    const sets = [];
+    const vals = [];
+    if (it.order !== undefined) {
+      sets.push('"order" = ?');
+      vals.push(it.order);
+    }
+    if (it.home_col !== undefined) {
+      sets.push('home_col = ?');
+      vals.push(it.home_col);
+    }
+    if (it.home_row !== undefined) {
+      sets.push('home_row = ?');
+      vals.push(it.home_row);
+    }
+    sets.push("updated_at = datetime('now')");
+    vals.push(it.slug);
+    return env.DB
+      .prepare(`UPDATE projects SET ${sets.join(', ')} WHERE slug = ?`)
+      .bind(...vals);
+  });
   await env.DB.batch(stmts);
 
   logAudit(ctx, env.DB, {
