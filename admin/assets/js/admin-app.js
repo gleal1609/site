@@ -197,6 +197,7 @@ function adminApp() {
 
         this.pendingOrder = [];
         this._toast(`Ordem de ${items.length} projeto(s) salva!`, 'success');
+        // Deploy Netlify é disparado no Worker em POST /api/projects/reorder (não depender só do browser).
       } catch (e) {
         this._toast('Erro ao salvar ordem: ' + e.message, 'error');
       }
@@ -363,8 +364,9 @@ function adminApp() {
 
       this.saving = true;
       try {
-        await this._api.deleteProject(this.form._slug);
+        const result = await this._api.deleteProject(this.form._slug);
         this._toast('Projeto excluído', 'success');
+        await this._maybeTriggerDeploy(result);
         this.closeEditor();
         await this._loadProjects({ silent: true });
       } catch (e) {

@@ -1,5 +1,6 @@
 import { json, error } from '../utils/response.js';
 import { logAudit } from '../utils/audit.js';
+import { runDeployHook } from './deploy.js';
 import { SLUG_RE, SLUG_PATH_RE } from '../utils/slug.js';
 import {
   ingestYoutubeThumbnailToR2,
@@ -263,16 +264,14 @@ export async function handleUpdate(slug, request, env, ctx) {
     return error('Conflict: version mismatch', 409);
   }
 
-  const wasPublished = !!existing.published;
-  const isPublished = data.published !== undefined ? !!data.published : wasPublished;
-  const shouldTriggerDeploy = isPublished || (wasPublished && !isPublished);
-
+  // Qualquer save no admin deve gerar novo build: o export usa só published=1, mas o utilizador
+  // espera ver alterações no site após guardar (evita confusão com critério só em "publicado").
   logAudit(ctx, env.DB, {
     action: 'update', targetType: 'project', targetId: slug,
     diff: { fields: Object.keys(data).filter(k => k !== 'version') },
   });
 
-  return json({ slug, updated: true, triggerDeploy: shouldTriggerDeploy });
+  return json({ slug, updated: true, triggerDeploy: true });
 }
 
 export async function handleDelete(slug, env, ctx) {
@@ -297,7 +296,7 @@ export async function handleDelete(slug, env, ctx) {
     action: 'delete', targetType: 'project', targetId: slug,
   });
 
-  return json({ slug, deleted: true });
+  return json({ slug, deleted: true, triggerDeploy: true });
 }
 
 export async function handleReorder(request, env, ctx) {
@@ -330,7 +329,21 @@ export async function handleReorder(request, env, ctx) {
     diff: { count: items.length },
   });
 
-  return json({ reordered: items.length });
+  // Dispara o build no Netlify no próprio Worker — não depende do admin ter JS/cache atualizado
+  // nem de um segundo POST /api/deploy no browser.
+  ctx.waitUntil(
+    runDeployHook(env, ctx)
+      .then((out) => {
+        if (out.kind === 'not_configured') {
+          console.warn('[reorder] NETLIFY_DEPLOY_HOOK_URL not set; deploy skipped');
+        } else if (out.kind === 'netlify_error') {
+          console.error('[reorder] Netlify hook HTTP', out.status);
+        }
+      })
+      .catch((e) => console.error('[reorder] deploy hook error', e)),
+  );
+
+  return json({ reordered: items.length, triggerDeploy: true });
 }
 
 /**
