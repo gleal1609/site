@@ -238,6 +238,10 @@ Ou `curl -X POST -H "Authorization: Bearer <TOKEN>" https://<worker>/api/project
 
 Resposta JSON: `candidates`, `ingested`, `failed` (slugs em que o download ao YouTube falhou — bloqueio de rede, vídeo sem miniatura, etc.). Depois: `fetch-projects.mjs` + deploy do site (ou build local).
 
+**Domínio público do R2 (`MEDIA_BASE_URL`):** o export devolve URLs absolutas (ex.: `https://media.reversofilmes.com.br/projects/.../thumb-yt-....jpg`). No Jekyll, **`relative_url` não deve ser aplicado a essas URLs** — o include `projects-grid.html` usa o mesmo critério que `project.html`: se o caminho contém `://`, usa-se a string tal qual; caso contrário, `relative_url` para caminhos do próprio site. Se no browser aparecer `net::ERR_NAME_NOT_RESOLVED` ao carregar imagens desse host, o problema é **DNS / domínio customizado do R2** (no painel Cloudflare: R2 → bucket → **Custom Domains**, registo `media` em **DNS** com proxy laranja). Confirme com `nslookup media.reversofilmes.com.br` ou abra uma URL de thumbnail diretamente no navegador.
+
+**Demo / fork sem o domínio do cliente na Cloudflare:** o Netlify só serve o site estático; **não** substitui URLs de mídia. O Worker expõe **`GET /media/<chave-R2>`** (sem login) — a chave continua a ser `projects/<slug>/...` como no bucket. Defina no **Dashboard do Worker** (ou `wrangler secret`/vars) **`MEDIA_BASE_URL`** = `https://<seu-worker>.<subconta>.workers.dev/media` (sem barra no fim). Volte a correr o export (`fetch-projects`) para o `_data/projects.json` refletir essas URLs. Em produção com `media.reversofilmes.com.br`, volte `MEDIA_BASE_URL` para esse domínio. O `netlify.toml` inclui o host `workers.dev` do projeto no CSP do admin para pré-visualizar thumbnails.
+
 **Nota:** a JPEG que o YouTube serve para Shorts pode continuar a ser uma composição 16:9 (faixa central + laterais). Mudar o armazenamento para R2 **não** altera o desenho do ficheiro; só muda o host. O CSS da home ajusta `object-fit` / `object-position` por `data-size` (`home_size`) para encaixar melhor em 1×1, 2×1 e 2×2.
 
 #### Encaixe de mídia nos blocos da masonry (home)

@@ -17,7 +17,9 @@ bucket_name = "reverso-media"
 crons = [ "0 3 * * 7", "0 4 * * *" ]
 
 [vars]
-MEDIA_BASE_URL = "https://media.reversofilmes.com.br"
+# Em produção (domínio R2 na zona do cliente): https://media.reversofilmes.com.br
+# Demo sem DNS na Cloudflare: defina no Dashboard do Worker → Variables:
+MEDIA_BASE_URL = "https://reverso-cms-api.reverso-cms.workers.dev/media"
 ADMIN_ORIGIN = "https://classy-nougat-5d062d.netlify.app/admin"
 SITE_ORIGIN = "https://classy-nougat-5d062d.netlify.app"
 ALLOWED_ORIGINS = "https://classy-nougat-5d062d.netlify.app,https://admin.reversofilmes.com.br,https://www.reversofilmes.com.br,https://reversofilmes.com.br"

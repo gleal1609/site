@@ -19,6 +19,7 @@ import { weeklyBackup } from './cron/backup.js';
 import { dailyCleanup } from './cron/cleanup.js';
 import { json, error } from './utils/response.js';
 import { matchApiProjectSlug } from './utils/slug.js';
+import { handlePublicMedia } from './routes/media-public.js';
 
 function matchRoute(method, path) {
   const slug = matchApiProjectSlug(path);
@@ -68,6 +69,10 @@ async function route(request, env, ctx, path) {
 
   if (path === '/health' && method === 'GET') {
     return handleHealth(env);
+  }
+  /** Mídia R2 pública — sem auth; use MEDIA_BASE_URL = https://<worker>/media */
+  if (method === 'GET' && path.startsWith('/media/')) {
+    return handlePublicMedia(env, path);
   }
   // Raiz: sem auth (evita 401 ao abrir :8787 no browser). O site estático é o Jekyll (ex. :4000).
   if (path === '/' && method === 'GET') {

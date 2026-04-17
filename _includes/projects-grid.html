@@ -18,6 +18,8 @@
       {% endif %}
       <a href="{{ proj_url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-order="{{ project.order | default: 999 }}">
       <div class="project-thumbnail-container">
+        {% assign _thumb = project.thumbnail | strip %}
+        {% assign _hover = project.hover_preview | strip %}
         {% if project.hover_preview %}
           <video 
             class="project-hover-video" 
@@ -25,18 +27,18 @@
             playsinline 
             loop 
             preload="metadata"
-            poster="{{ project.thumbnail | relative_url }}"
+            poster="{% if _thumb contains '://' %}{{ _thumb }}{% else %}{{ _thumb | relative_url }}{% endif %}"
             webkit-playsinline="true">
             {% assign _hp = project.hover_preview | downcase %}
             {% if _hp contains '.webm' %}
-              <source src="{{ project.hover_preview | relative_url }}" type="video/webm">
+              <source src="{% if _hover contains '://' %}{{ _hover }}{% else %}{{ _hover | relative_url }}{% endif %}" type="video/webm">
             {% else %}
-              <source src="{{ project.hover_preview | relative_url }}" type="video/mp4">
+              <source src="{% if _hover contains '://' %}{{ _hover }}{% else %}{{ _hover | relative_url }}{% endif %}" type="video/mp4">
             {% endif %}
           </video>
         {% endif %}
         <img 
-          src="{{ project.thumbnail | relative_url }}" 
+          src="{% if _thumb contains '://' %}{{ _thumb }}{% else %}{{ _thumb | relative_url }}{% endif %}" 
           alt="{{ project.title }}"
           class="project-thumbnail"
           loading="lazy"
