@@ -13,7 +13,7 @@ body {
 }
 
 /* Prevent flicker - hide content until transition script runs */
-body:not(.page-loaded) > *:not(.bottom-nav):not(script):not(link):not(style):not(meta):not(.intro-text-container) {
+body:not(.page-loaded) > *:not(.bottom-nav):not(script):not(link):not(style):not(meta):not(.home-nav):not(.home-hero):not(#home-below) {
   opacity: 0 !important;
   visibility: hidden !important;
   transform: translateY(20px) scale(0.98) !important;
@@ -474,14 +474,8 @@ a:hover::after {
   max-width: 100%;
   min-height: 100vh;
   position: relative;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
-.projects-grid.visible {
   opacity: 1;
+  box-sizing: border-box;
   pointer-events: auto;
 }
 
@@ -494,10 +488,14 @@ a:hover::after {
   color: inherit;
   background-color: #000;
   border: 2px solid #000;
-  opacity: 0;
+  opacity: 1;
   cursor: pointer;
   transition: transform 0.3s ease;
   box-sizing: border-box;
+}
+
+.project-item.is-pack-hidden {
+  display: none !important;
 }
 
 .project-item:hover,

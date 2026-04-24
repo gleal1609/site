@@ -1,0 +1,61 @@
+{% assign home_href = '/' | relative_url %}
+<nav class="home-nav" id="home-nav" aria-label="Navegação principal">
+  <button
+    type="button"
+    class="home-nav__trigger"
+    id="home-nav-trigger"
+    aria-label="Menu"
+    aria-expanded="false"
+    aria-controls="home-nav-panel"
+  >
+    <img
+      class="home-nav__logo"
+      src="{{ '/assets/images/logo/SIMBOLO_RVRS_SIMB_NEGATIVA_COR.png' | relative_url }}"
+      width="64"
+      height="80"
+      alt="Reverso"
+      loading="eager"
+      decoding="async"
+    />
+  </button>
+  <div
+    class="home-nav__backdrop"
+    id="home-nav-backdrop"
+    hidden
+    aria-hidden="true"
+  ></div>
+  <div
+    class="home-nav__panel"
+    id="home-nav-panel"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Itens de navegação"
+    hidden
+  >
+    <a href="{{ '/projetos/' | relative_url }}" class="home-nav__link">
+      <i class="fa-solid fa-grip" aria-hidden="true"></i>
+      <span>Projetos</span>
+    </a>
+    <a href="{{ '/curupire-se/' | relative_url }}" class="home-nav__link">
+      <i class="fa-solid fa-handshake" aria-hidden="true"></i>
+      <span>Curupire-se</span>
+    </a>
+    <a href="{{ '/about/' | relative_url }}" class="home-nav__link">
+      <i class="fa-solid fa-info-circle" aria-hidden="true"></i>
+      <span>Sobre</span>
+    </a>
+    <a href="https://youtube.com/@reversofilmes" class="home-nav__link" target="_blank" rel="noopener noreferrer">
+      <i class="fa-brands fa-youtube" aria-hidden="true"></i>
+      <span>YouTube</span>
+    </a>
+    <a href="https://instagram.com/reversofilmes" class="home-nav__link" target="_blank" rel="noopener noreferrer">
+      <i class="fa-brands fa-instagram" aria-hidden="true"></i>
+      <span>Instagram</span>
+    </a>
+    <a href="https://wa.me/5531996005678" class="home-nav__link" target="_blank" rel="noopener noreferrer">
+      <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
+      <span>WhatsApp</span>
+    </a>
+  </div>
+</nav>
+<a id="reverso-home-link" href="{{ home_href }}" class="reverso-home-marker" hidden aria-hidden="true">Início</a>

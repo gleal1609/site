@@ -1,6 +1,14 @@
 import { json, redirect, error } from '../utils/response.js';
 import { signJWT, generateJTI } from '../utils/jwt.js';
-import { parseCookies, sessionCookie, clearSessionCookie, oauthStateCookie, clearOauthStateCookie } from '../utils/cookies.js';
+import {
+  parseCookies,
+  sessionCookie,
+  clearSessionCookie,
+  oauthStateCookie,
+  clearOauthStateCookie,
+  oauthReturnCookie,
+  clearOauthReturnCookie,
+} from '../utils/cookies.js';
 import { rateLimitAuth, recordLoginAttempt } from '../middleware/rate-limit.js';
 import { logAudit } from '../utils/audit.js';
 
@@ -8,6 +16,62 @@ function randomHex(bytes) {
   const arr = new Uint8Array(bytes);
   crypto.getRandomValues(arr);
   return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Origens permitidas para o parâmetro return_to (admin local, Netlify, produção). */
+function allowedReturnOrigins(env) {
+  const out = new Set();
+  (env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .forEach(s => {
+      const t = s.trim();
+      if (!t) return;
+      try {
+        out.add(new URL(t).origin);
+      } catch {
+        if (t.startsWith('http://') || t.startsWith('https://')) return;
+        try { out.add(new URL(`https://${t}`).origin); } catch { /* ignore */ }
+      }
+    });
+  (env.DEV_ORIGINS || '')
+    .split(',')
+    .forEach(s => { const t = s.trim(); if (t) { try { out.add(new URL(t).origin); } catch { out.add(t); } } });
+  const admin = (env.ADMIN_ORIGIN || '').trim();
+  if (admin) {
+    try { out.add(new URL(admin).origin); } catch { /* ignore */ }
+  }
+  ['http://localhost:4000', 'http://127.0.0.1:4000', 'http://localhost:3000', 'http://127.0.0.1:3000'].forEach(o => out.add(o));
+  return out;
+}
+
+function isAllowedReturnTo(returnTo, env) {
+  if (!returnTo || returnTo.length > 2048) return false;
+  let u;
+  try {
+    u = new URL(returnTo);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  if (u.username || u.password) return false;
+  return allowedReturnOrigins(env).has(u.origin);
+}
+
+function redirectToAdminWithError(env, errParam, returnToRaw) {
+  const def = (env.ADMIN_ORIGIN || '').split('?')[0];
+  if (returnToRaw && isAllowedReturnTo(returnToRaw, env)) {
+    const u = new URL(returnToRaw);
+    u.searchParams.set('error', errParam);
+    return u.toString();
+  }
+  return `${def}${def.includes('?') ? '&' : '?'}error=${errParam}`;
+}
+
+function safeSuccessRedirect(env, returnToRaw) {
+  if (returnToRaw && isAllowedReturnTo(returnToRaw, env)) {
+    return returnToRaw;
+  }
+  return env.ADMIN_ORIGIN;
 }
 
 export async function handleGitHubLogin(request, env) {
@@ -22,9 +86,16 @@ export async function handleGitHubLogin(request, env) {
     state,
   });
 
+  const startUrl = new URL(request.url);
+  const returnTo = startUrl.searchParams.get('return_to') || '';
+  const cookies = [oauthStateCookie(state)];
+  if (returnTo && isAllowedReturnTo(returnTo, env)) {
+    cookies.push(oauthReturnCookie(returnTo));
+  }
+
   return redirect(
     `https://github.com/login/oauth/authorize?${params}`,
-    [oauthStateCookie(state)],
+    cookies,
   );
 }
 
@@ -58,9 +129,14 @@ export async function handleGitHubCallback(request, env, ctx) {
     }),
   });
 
+  const returnTo = cookies['__cf_oauth_return'] ? decodeURIComponent(cookies['__cf_oauth_return']) : '';
+
   const tokenData = await tokenRes.json();
   if (tokenData.error) {
-    return redirect(`${env.ADMIN_ORIGIN}?error=oauth_failed`, [clearOauthStateCookie()]);
+    return redirect(redirectToAdminWithError(env, 'oauth_failed', returnTo), [
+      clearOauthStateCookie(),
+      clearOauthReturnCookie(),
+    ]);
   }
 
   const userRes = await fetch('https://api.github.com/user', {
@@ -77,7 +153,10 @@ export async function handleGitHubCallback(request, env, ctx) {
   ).bind(String(ghUser.id)).first();
 
   if (!allowed) {
-    return redirect(`${env.ADMIN_ORIGIN}?error=not_authorized`, [clearOauthStateCookie()]);
+    return redirect(redirectToAdminWithError(env, 'not_authorized', returnTo), [
+      clearOauthStateCookie(),
+      clearOauthReturnCookie(),
+    ]);
   }
 
   const ttl = parseInt(env.JWT_TTL_SECONDS) || 28800;
@@ -100,9 +179,11 @@ export async function handleGitHubCallback(request, env, ctx) {
     diff: { login: ghUser.login },
   });
 
-  return redirect(env.ADMIN_ORIGIN, [
+  const dest = safeSuccessRedirect(env, returnTo);
+  return redirect(dest, [
     sessionCookie(jwt, env),
     clearOauthStateCookie(),
+    clearOauthReturnCookie(),
   ]);
 }
 

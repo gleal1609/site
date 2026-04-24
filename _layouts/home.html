@@ -1,7 +1,28 @@
 ---
 layout: none
 ---
-
+{% assign all_projects = site.data.projects %}
+{% if all_projects == nil or all_projects.size == 0 %}
+  {% assign all_projects = site.projects %}
+{% endif %}
+{% assign service_types_set = "" | split: "," %}
+{% for project in all_projects %}
+  {% if project.service_types %}
+    {% for service_type in project.service_types %}
+      {% unless service_types_set contains service_type %}
+        {% assign service_types_set = service_types_set | push: service_type %}
+      {% endunless %}
+    {% endfor %}
+  {% endif %}
+{% endfor %}
+{% assign sorted_services = service_types_set | sort %}
+{% assign _ss = site.data['site-settings'] %}
+{% assign default_hero = '/assets/videos/Cópia de PORTFOLIO REVERSO FILMES 2025.mp4' %}
+{% if _ss and _ss.hero_video and _ss.hero_video != '' %}
+  {% assign hero_src = _ss.hero_video %}
+{% else %}
+  {% assign hero_src = default_hero %}
+{% endif %}
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -11,37 +32,78 @@ layout: none
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Poppins:wght@400;500;900&display=swap" rel="stylesheet" />
 
   {% include header.html %}
-  
+
   {% include opengraph.html %}
 
   <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
   <link rel="stylesheet" href="{{ '/assets/css/bottom-nav.css' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/css/home-hero.css' | relative_url }}">
   <link rel="preload" href="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" as="script" crossorigin>
   <link rel="preload" href="https://cdn.jsdelivr.net/npm/packery@2.1.2/dist/packery.pkgd.min.js" as="script" crossorigin>
 </head>
-<body>
-  <div class="intro-text-container" id="intro-text">
-    <h1 class="intro-text">
-      <span class="intro-line intro-line-1">O PODER</span>
-      <span class="intro-line intro-line-2">DE VER O</span>
-      <span class="intro-line intro-line-3 intro-mundo">MUNDO</span>
-      <span class="intro-line intro-line-4">
-        <span class="intro-line-4a">AO</span>
-        <span class="intro-line-4b" id="contrario-text">CONTRÁRIO</span>
-      </span>
-    </h1>
+<body class="is-home">
+  {% include home-nav.html %}
+
+  <div class="home-hero" id="home-hero">
+    <video
+      class="home-hero__video"
+      id="home-hero-video"
+      autoplay
+      muted
+      loop
+      playsinline
+      webkit-playsinline="true"
+      preload="auto"
+      disablepictureinpicture
+    >
+      <source
+        src="{% if hero_src contains '://' %}{{ hero_src }}{% else %}{{ hero_src | relative_url }}{% endif %}"
+        type="{% if hero_src contains '.webm' %}video/webm{% else %}video/mp4{% endif %}"
+      />
+    </video>
+
+    <div class="intro-text-container" id="intro-text">
+      <h1 class="intro-text">
+        <span class="intro-line intro-line-1">O PODER</span>
+        <span class="intro-line intro-line-2">DE VER O</span>
+        <span class="intro-line intro-line-3 intro-mundo">MUNDO</span>
+        <span class="intro-line intro-line-4">
+          <span class="intro-line-4a">AO</span>
+          <span class="intro-line-4b" id="contrario-text">CONTRÁRIO</span>
+        </span>
+      </h1>
+    </div>
+
+    <div class="home-hero__scroll" id="scroll-hint" aria-hidden="true">
+      <p class="home-hero__scroll-line" data-scroll-hint>Role para ver</p>
+      <span class="home-hero__scroll-arrow" aria-hidden="true">↓</span>
+    </div>
   </div>
-  
-  {% include projects-grid.html %}
-  
-  {% include bottom-nav.html %}
-  
-  <!-- GSAP + Packery (load early so layout runs right after intro; avoids late network fetch) -->
+
+  <div class="home-below" id="home-below">
+    <section class="home-filter" id="home-filter" aria-label="Filtrar por serviço">
+      <div class="home-filter__inner servicos-list">
+        <button type="button" class="servico-link home-filter__btn home-filter__btn--active" data-service="__all__">TODOS</button>
+        {% for service_type in sorted_services %}
+          <button type="button" class="servico-link home-filter__btn" data-service="{{ service_type | replace: '"', '' }}">{{ service_type }}</button>
+        {% endfor %}
+      </div>
+    </section>
+
+    {% include projects-grid.html %}
+
+    <div class="load-more-wrap" id="load-more-wrap" hidden>
+      <button type="button" class="servico-link load-more-btn" id="load-more-btn">Carregar mais</button>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/packery@2.1.2/dist/packery.pkgd.min.js" crossorigin="anonymous"></script>
   <script src="{{ '/assets/js/page-transitions.js' | relative_url }}"></script>
+  <script src="{{ '/assets/js/home-nav.js' | relative_url }}"></script>
+  <script src="{{ '/assets/js/hero-scroll-text.js' | relative_url }}"></script>
   <script src="{{ '/assets/js/home-intro.js' | relative_url }}"></script>
   <script src="{{ '/assets/js/masonry-init.js' | relative_url }}"></script>
-  <script src="{{ '/assets/js/bottom-nav.js' | relative_url }}"></script>
+  <script src="{{ '/assets/js/home-filter.js' | relative_url }}"></script>
 </body>
 </html>

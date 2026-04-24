@@ -15,8 +15,10 @@
 (function () {
   'use strict';
 
+  /* Inclui hero/nav/conteúdo da Home no fade-out; o CSS de FOUC ainda isola
+     .home-nav / .home-hero / #home-below em main.css até .page-loaded. */
   var CONTENT_SEL =
-    'body > *:not(.bottom-nav):not(script):not(link):not(style):not(meta):not(.intro-text-container)';
+    'body > *:not(.bottom-nav):not(script):not(link):not(style):not(meta)';
   var DURATION = 0.5;
   var isTransitioning = false;
   var initialFadeInDone = false;
@@ -25,13 +27,13 @@
   /* ── helpers ─────────────────────────────────────────────────────── */
 
   function homePathname() {
-    var el = document.querySelector('a.bottom-nav-item-center');
-    if (!el || !el.href) return '/';
-    try {
-      return new URL(el.href, window.location.origin).pathname;
-    } catch (_) {
-      return '/';
+    var el = document.getElementById('reverso-home-link');
+    if (el && el.href) {
+      try {
+        return new URL(el.href, window.location.origin).pathname;
+      } catch (_) {}
     }
+    return '/';
   }
 
   function normalizePathname(path) {
@@ -59,6 +61,14 @@
   function contentElements() {
     return Array.from(document.querySelectorAll(CONTENT_SEL)).filter(function (el) {
       return !el.classList.contains('bottom-nav') && !el.closest('.bottom-nav');
+    });
+  }
+
+  function resetInlineStyles(els) {
+    els.forEach(function (el) {
+      el.style.opacity = '1';
+      el.style.visibility = 'visible';
+      el.style.transform = 'none';
     });
   }
 
@@ -176,6 +186,7 @@
     var isHome = !!document.getElementById('intro-text');
 
     if (isHome) {
+      resetInlineStyles(contentElements());
       document.body.classList.add('page-loaded');
       document.addEventListener('click', handleLinkClick, true);
       return;
@@ -205,4 +216,12 @@
   } else {
     init();
   }
+
+  // Ao voltar via bfcache, alguns estilos inline do fade-out podem persistir.
+  window.addEventListener('pageshow', function () {
+    if (document.body.classList.contains('is-home')) {
+      resetInlineStyles(contentElements());
+      document.body.classList.add('page-loaded');
+    }
+  });
 })();

@@ -68,12 +68,10 @@ async function importProject(data, body, slug) {
     client: data.client || null,
     date_mmddyyyy: data.date_mmddyyyy ? String(data.date_mmddyyyy) : null,
     year: data.year || null,
-    show_on_home: !!data.show_on_home,
     order: data.order || 0,
     home_size: data.home_size ? String(data.home_size) : '1x1',
     youtube_url: data.youtube_url || null,
     pixieset_url: data.pixieset_url || null,
-    published: true,
   };
 
   if (DRY_RUN) {

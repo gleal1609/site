@@ -49,7 +49,6 @@ collections:
         widget: string
         pattern: ["^\\d{8}$", "Use formato MMDDYYYY com 8 dígitos (ex: 06182025)"]
       - { label: "Ano", name: year, widget: number, value_type: int }
-      - { label: "Mostrar na Home", name: show_on_home, widget: boolean, default: false }
       - { label: "Ordem (portfólio e home)", name: order, widget: number, value_type: int }
       - label: "Tamanho na Home"
         name: home_size

@@ -210,18 +210,19 @@
   }
 }
 
-body {
+/* Espaço para a bottom-nav — Home (.is-home) usa menu lateral, sem barra inferior */
+body:not(.is-home) {
   padding-bottom: 120px;
 }
 
 @media (max-width: 768px) {
-  body {
+  body:not(.is-home) {
     padding-bottom: 140px;
   }
 }
 
 @media (max-width: 480px) {
-  body {
+  body:not(.is-home) {
     padding-bottom: 130px;
   }
 }

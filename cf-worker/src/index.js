@@ -10,7 +10,6 @@ import {
   handleCreate,
   handleUpdate,
   handleDelete,
-  handleReorder,
   handleBackfillYoutubeThumbnails,
   handleMediaKeysSync,
   handleYoutubeManifest,
@@ -22,6 +21,12 @@ import { dailyCleanup } from './cron/cleanup.js';
 import { json, error } from './utils/response.js';
 import { matchApiProjectSlug } from './utils/slug.js';
 import { handlePublicMedia } from './routes/media-public.js';
+import {
+  handleSiteSettingsList,
+  handleSiteSettingsExport,
+  handleSiteSettingsPatch,
+} from './routes/site-settings.js';
+import { handlePixiesetProxy, handlePixiesetResolve } from './routes/pixieset.js';
 
 function matchRoute(method, path) {
   const slug = matchApiProjectSlug(path);
@@ -97,6 +102,12 @@ async function route(request, env, ctx, path) {
     return handleExport(env);
   }
 
+  if (path === '/api/site-settings/export' && method === 'GET') {
+    const authErr = await buildTokenAuth(request, env);
+    if (authErr) return authErr;
+    return handleSiteSettingsExport(env);
+  }
+
   if (path === '/api/projects/youtube-manifest' && method === 'GET') {
     const authErr = await buildTokenAuth(request, env);
     if (authErr) return authErr;
@@ -124,11 +135,21 @@ async function route(request, env, ctx, path) {
   const allowErr = await checkAllowlist(env, ctx);
   if (allowErr) return allowErr;
 
+  if (path === '/api/pixieset/resolve' && method === 'GET') {
+    return handlePixiesetResolve(request, env);
+  }
+  if (path === '/api/pixieset/proxy' && method === 'GET') {
+    return handlePixiesetProxy(request);
+  }
+
   if (path === '/api/auth/me' && method === 'GET') {
     return handleMe(env, ctx);
   }
   if (path === '/api/projects' && method === 'GET') {
     return handleList(env);
+  }
+  if (path === '/api/site-settings' && method === 'GET') {
+    return handleSiteSettingsList(env);
   }
   if (method === 'GET') {
     const { slug } = matchRoute(method, path);
@@ -147,13 +168,18 @@ async function route(request, env, ctx, path) {
     return handleCreate(request, env, ctx);
   }
   if (path === '/api/projects/reorder' && method === 'POST') {
-    return handleReorder(request, env, ctx);
+    return error('reorder is no longer supported; use project dates for ordering', 410);
   }
   if (path === '/api/upload' && method === 'POST') {
     return handleUpload(request, env, ctx);
   }
   if (path === '/api/deploy' && method === 'POST') {
     return handleDeploy(env, ctx);
+  }
+
+  const siteSettingMatch = path.match(/^\/api\/site-settings\/([a-z0-9_]+)$/i);
+  if (siteSettingMatch && method === 'PATCH') {
+    return handleSiteSettingsPatch(siteSettingMatch[1], request, env, ctx);
   }
 
   const { slug } = matchRoute(method, path);

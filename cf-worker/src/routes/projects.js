@@ -11,8 +11,6 @@ import {
 const MAX_TITLE = 200;
 const MAX_BODY = 102400;
 const MAX_DESCRIPTION = 32000;
-const MAX_REORDER_ITEMS = 500;
-
 /** URL absoluta (http/https) ou chave R2 sob MEDIA_BASE_URL. */
 function mediaPublicUrl(base, keyOrUrl) {
   if (keyOrUrl == null || keyOrUrl === '') return null;
@@ -59,24 +57,37 @@ function validate(data, isCreate) {
   if (data.service_types !== undefined && data.service_types !== null && !Array.isArray(data.service_types)) {
     errs.push('service_types must be an array');
   }
+  for (const [key, val] of [
+    ['youtube_thumb_time_sec', data.youtube_thumb_time_sec],
+    ['youtube_preview_start_sec', data.youtube_preview_start_sec],
+  ]) {
+    if (val === undefined || val === null) continue;
+    if (typeof val === 'string' && val.trim() === '') continue;
+    const n = Number(val);
+    if (!Number.isFinite(n) || n < 0 || n > 6 * 3600) {
+      errs.push(`${key} must be a number between 0 and 6 hours`);
+    }
+  }
   return errs;
 }
 
 export async function handleExport(env) {
+  // Todos os projetos — a Home passou a mostrar tudo (migration 0005
+  // removeu `show_on_home` e `published`).
   const { results } = await env.DB.prepare(
     `SELECT slug, title, body_md, description, thumbnail, hover_preview, service_types,
-            client, date_mmddyyyy, year, show_on_home, "order", home_size,
+            client, date_mmddyyyy, year, "order", home_size,
             home_col, home_row,
-            youtube_url, pixieset_url
-     FROM projects WHERE published = 1
-     ORDER BY "order" ASC, date_mmddyyyy DESC`,
+            youtube_url, pixieset_url,
+            youtube_thumb_time_sec, youtube_preview_start_sec
+     FROM projects
+     ORDER BY date_mmddyyyy DESC, year DESC, slug ASC`,
   ).all();
 
   const base = env.MEDIA_BASE_URL || '';
   const projects = results.map(r => ({
     ...r,
     service_types: parseServiceTypes(r.service_types),
-    show_on_home: !!r.show_on_home,
     thumbnail: mediaPublicUrl(base, r.thumbnail),
     hover_preview: mediaPublicUrl(base, r.hover_preview),
     url: `/projects/${r.slug}/`,
@@ -88,19 +99,18 @@ export async function handleExport(env) {
 export async function handleList(env) {
   const { results } = await env.DB.prepare(
     `SELECT id, slug, title, thumbnail, hover_preview, service_types,
-            client, date_mmddyyyy, year, show_on_home, "order", home_size,
+            client, date_mmddyyyy, year, "order", home_size,
             home_col, home_row,
-            youtube_url, pixieset_url, published, version, body_md, description,
+            youtube_url, pixieset_url, youtube_thumb_time_sec, youtube_preview_start_sec,
+            version, body_md, description,
             created_at, updated_at
-     FROM projects ORDER BY "order" ASC`,
+     FROM projects ORDER BY date_mmddyyyy DESC, year DESC, slug ASC`,
   ).all();
 
   const base = env.MEDIA_BASE_URL || '';
   const projects = results.map(r => ({
     ...r,
     service_types: parseServiceTypes(r.service_types),
-    show_on_home: !!r.show_on_home,
-    published: !!r.published,
     thumbnail: mediaPublicUrl(base, r.thumbnail),
     hover_preview: mediaPublicUrl(base, r.hover_preview),
     url: `/projects/${r.slug}/`,
@@ -121,8 +131,6 @@ export async function handleGet(slug, env) {
   return json({
     ...row,
     service_types: parseServiceTypes(row.service_types),
-    show_on_home: !!row.show_on_home,
-    published: !!row.published,
     thumbnail: mediaPublicUrl(base, row.thumbnail),
     hover_preview: mediaPublicUrl(base, row.hover_preview),
   });
@@ -150,22 +158,34 @@ export async function handleCreate(request, env, ctx) {
     ? JSON.stringify(data.service_types)
     : '[]';
 
+  const thumbT =
+    data.youtube_thumb_time_sec != null && data.youtube_thumb_time_sec !== ''
+      ? Number(data.youtube_thumb_time_sec)
+      : null;
+  const prevT =
+    data.youtube_preview_start_sec != null && data.youtube_preview_start_sec !== ''
+      ? Number(data.youtube_preview_start_sec)
+      : null;
+  const thumbSec = Number.isFinite(thumbT) ? thumbT : null;
+  const prevSec = Number.isFinite(prevT) ? prevT : null;
+
   await env.DB.prepare(
     `INSERT INTO projects (slug, title, body_md, description, thumbnail, hover_preview,
-      service_types, client, date_mmddyyyy, year, show_on_home, "order",
-      home_size, home_col, home_row, youtube_url, pixieset_url, published)
+      service_types, client, date_mmddyyyy, year, "order",
+      home_size, home_col, home_row, youtube_url, pixieset_url,
+      youtube_thumb_time_sec, youtube_preview_start_sec)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     data.slug, data.title, data.body_md || null,
     data.description != null ? String(data.description) : null,
     thumbnailVal, hoverVal,
     svcJson, data.client || null, data.date_mmddyyyy || null,
-    data.year || null, data.show_on_home ? 1 : 0,
+    data.year || null,
     data.order || 0, data.home_size || '1x1',
     Number.isInteger(data.home_col) ? data.home_col : null,
     Number.isInteger(data.home_row) ? data.home_row : null,
     data.youtube_url || null, data.pixieset_url || null,
-    data.published ? 1 : 0,
+    thumbSec, prevSec,
   ).run();
 
   logAudit(ctx, env.DB, {
@@ -173,8 +193,10 @@ export async function handleCreate(request, env, ctx) {
     diff: { title: data.title },
   });
 
+  // Todo save → deploy: a Home mostra todos os projetos após a migration
+  // 0005 (sem `published` / `show_on_home`).
   return json(
-    { slug: data.slug, created: true, triggerDeploy: !!data.published },
+    { slug: data.slug, created: true, triggerDeploy: true },
     201,
   );
 }
@@ -187,7 +209,7 @@ export async function handleUpdate(slug, request, env, ctx) {
   if (data.version === undefined) return error('version field required for updates', 400);
 
   const existing = await env.DB.prepare(
-    'SELECT version, published, youtube_url, thumbnail FROM projects WHERE slug = ?',
+    'SELECT version, youtube_url, thumbnail FROM projects WHERE slug = ?',
   ).bind(slug).first();
   if (!existing) return error('Project not found', 404);
 
@@ -232,19 +254,28 @@ export async function handleUpdate(slug, request, env, ctx) {
     data.hover_preview = stripMediaBaseToKey(data.hover_preview, mediaBase);
   }
 
+  for (const yk of ['youtube_thumb_time_sec', 'youtube_preview_start_sec']) {
+    if (data[yk] === undefined) continue;
+    if (data[yk] === null || data[yk] === '') {
+      data[yk] = null;
+      continue;
+    }
+    const n = Number(data[yk]);
+    data[yk] = Number.isFinite(n) ? n : null;
+  }
+
   const fields = [];
   const values = [];
   const updatable = [
     'title', 'body_md', 'description', 'thumbnail', 'hover_preview', 'client',
-    'date_mmddyyyy', 'year', 'show_on_home', 'order', 'home_size',
+    'date_mmddyyyy', 'year', 'order', 'home_size',
     'home_col', 'home_row',
-    'youtube_url', 'pixieset_url', 'published',
+    'youtube_url', 'pixieset_url', 'youtube_thumb_time_sec', 'youtube_preview_start_sec',
   ];
 
   for (const key of updatable) {
     if (data[key] !== undefined) {
-      let val = data[key];
-      if (key === 'show_on_home' || key === 'published') val = val ? 1 : 0;
+      const val = data[key];
       fields.push(key === 'order' ? '"order" = ?' : `${key} = ?`);
       values.push(val);
     }
@@ -268,8 +299,8 @@ export async function handleUpdate(slug, request, env, ctx) {
     return error('Conflict: version mismatch', 409);
   }
 
-  // Qualquer save no admin deve gerar novo build: o export usa só published=1, mas o utilizador
-  // espera ver alterações no site após guardar (evita confusão com critério só em "publicado").
+  // Qualquer save no admin gera novo build — a Home mostra todos os
+  // projetos (sem filtro `published`/`show_on_home` após a migration 0005).
   logAudit(ctx, env.DB, {
     action: 'update', targetType: 'project', targetId: slug,
     diff: { fields: Object.keys(data).filter(k => k !== 'version') },
@@ -301,69 +332,6 @@ export async function handleDelete(slug, env, ctx) {
   });
 
   return json({ slug, deleted: true, triggerDeploy: true });
-}
-
-export async function handleReorder(request, env, ctx) {
-  const { items } = await request.json();
-  if (!Array.isArray(items)) return error('items array required', 400);
-  if (items.length === 0) return error('items must not be empty', 400);
-  if (items.length > MAX_REORDER_ITEMS) {
-    return error(`items max ${MAX_REORDER_ITEMS} entries`, 400);
-  }
-
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    if (!it || typeof it !== 'object') return error(`items[${i}] must be an object`, 400);
-    if (typeof it.slug !== 'string' || !SLUG_PATH_RE.test(it.slug)) {
-      return error(`items[${i}].slug invalid`, 400);
-    }
-    const hasOrder = it.order !== undefined;
-    const hasGrid = it.home_col !== undefined || it.home_row !== undefined;
-    if (!hasOrder && !hasGrid) {
-      return error(`items[${i}] requires order and/or home_col/home_row`, 400);
-    }
-    if (hasOrder && !Number.isInteger(it.order)) {
-      return error(`items[${i}].order must be integer`, 400);
-    }
-    if (it.home_col !== undefined && it.home_col !== null && !Number.isInteger(it.home_col)) {
-      return error(`items[${i}].home_col must be integer or null`, 400);
-    }
-    if (it.home_row !== undefined && it.home_row !== null && !Number.isInteger(it.home_row)) {
-      return error(`items[${i}].home_row must be integer or null`, 400);
-    }
-  }
-
-  const stmts = items.map((it) => {
-    const sets = [];
-    const vals = [];
-    if (it.order !== undefined) {
-      sets.push('"order" = ?');
-      vals.push(it.order);
-    }
-    if (it.home_col !== undefined) {
-      sets.push('home_col = ?');
-      vals.push(it.home_col);
-    }
-    if (it.home_row !== undefined) {
-      sets.push('home_row = ?');
-      vals.push(it.home_row);
-    }
-    sets.push("updated_at = datetime('now')");
-    vals.push(it.slug);
-    return env.DB
-      .prepare(`UPDATE projects SET ${sets.join(', ')} WHERE slug = ?`)
-      .bind(...vals);
-  });
-  await env.DB.batch(stmts);
-
-  logAudit(ctx, env.DB, {
-    action: 'reorder', targetType: 'project', targetId: 'bulk',
-    diff: { count: items.length },
-  });
-
-  // Deploy: o admin agrega alterações e chama POST /api/deploy uma vez em «Publicar».
-
-  return json({ reordered: items.length, triggerDeploy: false });
 }
 
 /**
@@ -446,9 +414,10 @@ export async function handleMediaKeysSync(request, env, ctx) {
 /** Lista slug + youtube_url para scripts locais (ingest em lote). Auth: token de build. */
 export async function handleYoutubeManifest(env) {
   const { results } = await env.DB.prepare(
-    `SELECT slug, youtube_url FROM projects
+    `SELECT slug, youtube_url, youtube_thumb_time_sec, youtube_preview_start_sec
+     FROM projects
      WHERE TRIM(COALESCE(youtube_url, '')) != ''
-     ORDER BY "order" ASC`,
+     ORDER BY date_mmddyyyy DESC, year DESC, slug ASC`,
   ).all();
 
   return json({ projects: results });

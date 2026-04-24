@@ -60,7 +60,6 @@ service_types:
 client: "ClientName"
 date_mmddyyyy: "06182025"
 year: 2025
-show_on_home: true
 order: 1
 ---
 ```

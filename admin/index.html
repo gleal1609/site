@@ -9,41 +9,28 @@
   <meta name="robots" content="noindex, nofollow" />
   <title>Admin | Reverso Filmes</title>
   <meta name="reverso-cms-api" content="{{ site.reverso_cms_api }}" />
+  <link rel="icon" href="data:," />
 
-  <!-- Admin styles -->
   <link rel="stylesheet" href="/admin/assets/css/admin.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde@2.18.0/dist/easymde.min.css" />
 
-  <!--
-    Fallback Sveltia CMS: substituir todo o conteúdo deste arquivo por:
-    <script src="https://unpkg.com/@sveltia/cms@0.152.0/dist/sveltia-cms.js"></script>
-    e manter admin/config.yml.
-  -->
-
-  <!-- Vendor libs (versões fixas) -->
   <script src="https://cdn.jsdelivr.net/npm/packery@2.1.2/dist/packery.pkgd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/draggabilly@3.0.0/dist/draggabilly.pkgd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/easymde@2.18.0/dist/easymde.min.js"></script>
 
-  <!-- App modules -->
   <script src="/admin/assets/js/cf-api.js"></script>
   <script src="/admin/assets/js/auth.js"></script>
   <script src="/admin/assets/js/media-upload.js"></script>
-  <script src="/admin/assets/js/grid-manager.js"></script>
+  <script src="/admin/assets/js/youtube-iframe-panel.js"></script>
+  <script src="/admin/assets/js/pixieset-slideshow.js"></script>
   <script src="/admin/assets/js/admin-app.js"></script>
 
-  <!-- Alpine.js (must be last, deferred) -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
 </head>
 <body x-data="adminApp()" x-init="init()">
 
-  <!-- ========== Loading ========== -->
   <div x-show="loading" class="loading-screen">
     <div class="spinner"></div>
     <p>Carregando&hellip;</p>
   </div>
 
-  <!-- ========== Login ========== -->
   <div x-show="!loading && !authed" x-cloak class="login-screen">
     <div class="login-card">
       <h1>Reverso Filmes</h1>
@@ -58,11 +45,9 @@
     </div>
   </div>
 
-  <!-- ========== Main App ========== -->
   <div x-show="!loading && authed" x-cloak
        class="admin-app" :class="{ 'editor-open': editorOpen, 'is-publishing': publishing }">
 
-    <!-- Header -->
     <header class="admin-header">
       <div class="header-left">
         <h1 class="logo">Reverso</h1>
@@ -70,11 +55,11 @@
       </div>
 
       <div class="header-center">
-        <button @click="setView('home')" :class="{ active: view === 'home' }" class="tab-btn">
-          Home
+        <button type="button" @click="setView('hero')" :class="{ active: view === 'hero' }" class="tab-btn">
+          Hero
         </button>
-        <button @click="setView('all')" :class="{ active: view === 'all' }" class="tab-btn">
-          Todos
+        <button type="button" @click="setView('projetos')" :class="{ active: view === 'projetos' }" class="tab-btn">
+          Projetos
         </button>
       </div>
 
@@ -87,89 +72,220 @@
                 class="btn btn-primary"
                 @click="publishAll()"
                 :disabled="!canPublish || publishing"
-                title="Gravar rascunhos no servidor e disparar um deploy">
+                title="Salvar rascunhos no servidor e disparar um deploy">
           <span x-show="publishing" class="spinner-sm"></span>
           Publicar
         </button>
       </div>
 
       <div class="header-right">
-        <button @click="newProject()" class="btn btn-accent">+ Novo Projeto</button>
+        <button type="button"
+                x-show="view === 'projetos'"
+                class="btn btn-secondary"
+                @click="randomizeHomeSizes()"
+                title="Atribuir tamanhos aleatórios (1x1/1x2/2x1/2x2) aos projectos da Home">
+          Aleatorizar formatos
+        </button>
+        <button type="button"
+                x-show="view === 'projetos'"
+                @click="newProject()" class="btn btn-accent">+ Novo Projeto</button>
         <div class="user-info" x-show="user">
           <img :src="user?.avatar_url || user?.avatar" alt="" class="user-avatar" />
-          <button @click="logout()" class="btn-link" title="Sair">Sair</button>
+          <button type="button" @click="logout()" class="btn-link" title="Sair">Sair</button>
         </div>
       </div>
     </header>
 
-    <!-- Content area -->
-    <main class="admin-content" style="display:contents">
+    <main class="admin-main">
 
-      <!-- Grid -->
-      <div class="grid-area">
-        <div id="grid-container" class="grid-container"></div>
+      <!-- ========== Aba Projetos ========== -->
+      <div class="projetos-area" x-show="view === 'projetos'">
+        <div class="projetos-header">
+          <div class="projetos-header__text">
+            <h2 class="projetos-title">Masonry da Home</h2>
+            <p class="projetos-hint">
+              Prévia 1-para-1 da grade exibida na Home do site. Todos os
+              projetos cadastrados aparecem aqui. Clique em «Aleatorizar
+              formatos» para experimentar uma nova distribuição de
+              tamanhos (a ordem cronológica dos projetos é preservada).
+              As mudanças ficam em rascunho até «Publicar». Clique em um
+              card para editar o projeto.
+            </p>
+          </div>
+        </div>
 
-        <!-- Empty state: sem projetos na API -->
+        <div id="admin-masonry-container" class="admin-masonry-container"
+             :class="{ 'is-ready': masonryReady }">
+          <div class="admin-masonry-grid" id="admin-masonry-grid">
+            <template x-for="p in visibleProjects" :key="p._slug">
+              <a
+                href="#"
+                class="admin-project-item"
+                :data-size="p.home_size || '1x1'"
+                :data-slug="p._slug"
+                @click.prevent="openEditor(p)"
+                role="button"
+                :aria-label="p.title"
+                tabindex="0"
+                @keydown.enter.prevent="openEditor(p)"
+              >
+                <div class="admin-project-item__thumb">
+                  <img x-show="p.thumbnail"
+                       :src="p.thumbnail"
+                       :alt="p.title"
+                       loading="lazy" />
+                  <div x-show="!p.thumbnail" class="admin-project-item__ph" aria-hidden="true">
+                    Sem imagem
+                  </div>
+                </div>
+                <div class="admin-project-item__overlay">
+                  <h3 class="admin-project-item__title" x-text="p.title"></h3>
+                  <p class="admin-project-item__client"
+                     x-show="p.client"
+                     x-text="p.client"></p>
+                </div>
+                <div class="admin-project-item__badges" x-show="hasDraftFor(p._slug)">
+                  <span class="gc-badge draft">Rascunho</span>
+                </div>
+              </a>
+            </template>
+          </div>
+        </div>
+
         <div x-show="!loading && projects.length === 0" class="empty-state">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
-          </svg>
           <p>Nenhum projeto cadastrado.</p>
-          <p class="empty-state-hint">Crie um com «+ Novo Projeto» ou importe dados para o D1 (ver documentação do projeto).</p>
-        </div>
-
-        <!-- Empty state: aba Home sem itens com Mostrar na Home -->
-        <div x-show="!loading && projects.length > 0 && view === 'home' && homeProjectCount === 0" class="empty-state">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
-          </svg>
-          <p>Nenhum projeto na Home.</p>
-          <p class="empty-state-hint">A aba «Home» só lista projetos com «Mostrar na Home». Use «Todos» ou edite um projeto e marque essa opção.</p>
-        </div>
-
-        <!-- Pending layout: confirmar para incluir na publicação -->
-        <div x-show="hasPendingOrder && pendingCount > 0" x-transition class="save-bar">
-          <span x-text="view === 'home'
-            ? `${pendingCount} posição(ões) não confirmada(s) — use «Salvar Layout» para incluir na publicação.`
-            : `${pendingCount} alteração(ões) de ordem não confirmada(s) — use «Salvar Ordem» para incluir na publicação.`"></span>
-          <button type="button" @click="saveOrder()" class="btn btn-primary"
-                  x-text="view === 'home' ? 'Salvar Layout' : 'Salvar Ordem'"></button>
-          <button type="button" @click="discardPendingOrder()" class="btn btn-secondary">
-            Descartar
-          </button>
+          <p class="empty-state-hint">
+            Clique em «+ Novo Projeto» para criar o primeiro.
+          </p>
         </div>
       </div>
 
-      <!-- Editor Sidebar -->
-      <aside x-show="editorOpen" x-transition.opacity class="editor-sidebar">
+      <!-- ========== Aba Hero ========== -->
+      <div class="hero-area" x-show="view === 'hero'">
+        <div x-show="siteLoading" class="editor-loading" style="min-height:160px">
+          <div class="spinner"></div>
+        </div>
+
+        <div x-show="!siteLoading" class="hero-area__inner">
+          <div class="hero-area__heading">
+            <h2 class="hero-area__title">Hero da Home</h2>
+            <p class="hero-area__hint">
+              O vídeo aparece em <em>loop</em>, sem som, como fundo em tela
+              cheia da Home. Escolha um arquivo MP4 ou WebM para
+              pré-visualizar; a mudança só é aplicada ao site depois que
+              você clicar em «Publicar».
+            </p>
+          </div>
+
+          <div class="hero-area__grid">
+            <div class="hero-preview" :class="{ 'has-draft': !!siteDraft }">
+              <span class="hero-preview__label">Prévia</span>
+              <div class="hero-preview__stage">
+                <video
+                  class="hero-preview__video"
+                  :src="heroPreviewSrc"
+                  x-show="heroPreviewSrc"
+                  autoplay
+                  muted
+                  loop
+                  playsinline
+                  webkit-playsinline="true"
+                ></video>
+                <div x-show="!heroPreviewSrc" class="hero-preview__empty">
+                  Nenhum vídeo definido. Escolha um arquivo ao lado para
+                  pré-visualizar.
+                </div>
+
+                <div class="hero-preview__scroll" aria-hidden="true">
+                  <span>Role para ver</span>
+                  <span class="hero-preview__arrow">↓</span>
+                </div>
+              </div>
+            </div>
+
+            <aside class="hero-upload" :class="{ 'has-draft': !!siteDraft }">
+              <div class="hero-upload__header">
+                <h3 class="hero-upload__title">Arquivo do vídeo</h3>
+                <span class="hero-upload__status"
+                      :class="{ 'is-draft': !!siteDraft, 'is-saved': !siteDraft && !!siteSettings.hero_video, 'is-none': !siteDraft && !siteSettings.hero_video }">
+                  <template x-if="siteDraft">
+                    <span>Rascunho não publicado</span>
+                  </template>
+                  <template x-if="!siteDraft && siteSettings.hero_video">
+                    <span>Vídeo atual já publicado</span>
+                  </template>
+                  <template x-if="!siteDraft && !siteSettings.hero_video">
+                    <span>Sem vídeo no CMS</span>
+                  </template>
+                </span>
+              </div>
+
+              <div class="hero-upload__meta" x-show="siteDraft">
+                <span class="hero-upload__filename" x-text="siteDraft?.fileName"></span>
+                <span class="hero-upload__filesize" x-text="siteDraft?.fileSizeLabel"></span>
+              </div>
+
+              <div class="hero-upload__meta" x-show="!siteDraft && !siteSettings.hero_video">
+                <span class="hero-upload__hint">
+                  Sem vídeo definido no CMS. O site usa o arquivo local
+                  como padrão até você publicar um novo vídeo.
+                </span>
+              </div>
+
+              <input type="file"
+                     id="hero-file-input"
+                     accept="video/mp4,video/webm"
+                     class="file-input"
+                     @change="onSiteHeroVideo($event)"
+                     :disabled="siteSaving || publishing" />
+              <label for="hero-file-input" class="upload-btn hero-upload__btn">
+                <span x-show="!siteDraft">Escolher arquivo</span>
+                <span x-show="siteDraft">Trocar arquivo</span>
+              </label>
+
+              <button type="button"
+                      x-show="siteDraft"
+                      @click="discardSiteDraft()"
+                      class="btn btn-secondary hero-upload__discard"
+                      title="Descartar arquivo em rascunho">
+                Descartar rascunho
+              </button>
+
+              <p class="hero-upload__help">
+                Formatos aceitos: <strong>MP4</strong> ou <strong>WebM</strong>,
+                até 25&nbsp;MB. Você pode trocar o arquivo quantas vezes
+                quiser — o rascunho é substituído e a prévia é atualizada
+                automaticamente. O envio ao servidor e o deploy só
+                acontecem quando você clicar em «Publicar».
+              </p>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Modal editor -->
+    <div x-show="editorOpen" x-cloak class="editor-modal" @keydown.escape.window="closeEditorGuarded()">
+      <div class="editor-modal__backdrop" @click="closeEditorGuarded()"></div>
+      <div class="editor-modal__dialog" role="dialog" aria-modal="true" :aria-label="isNew ? 'Novo projeto' : 'Editar projeto'">
         <div class="editor-header">
           <h2 x-text="isNew ? 'Novo Projeto' : 'Editar Projeto'"></h2>
           <button type="button" @click="closeEditorGuarded()" class="btn-close" title="Fechar">&times;</button>
         </div>
 
-        <!-- Loading -->
         <div x-show="editorLoading" class="editor-loading">
           <div class="spinner"></div>
         </div>
 
-        <!-- Form -->
         <div x-show="!editorLoading" class="editor-body">
-
-          <!-- Title -->
           <label class="field-label">Título</label>
           <input type="text" x-model="form.title" class="input" />
 
-          <!-- Client -->
-          <label class="field-label">Cliente</label>
-          <input type="text" x-model="form.client" class="input" />
-
-          <!-- Descrição (texto editorial; também usado no detalhe do projeto) -->
-          <label class="field-label">Descrição</label>
-          <textarea x-model="form.description" class="input" rows="5"
-                    placeholder="Resumo ou texto da planilha (Column 11)…"></textarea>
-
-          <!-- Date + Year -->
           <div class="field-row">
+            <div class="field-col">
+              <label class="field-label">Cliente</label>
+              <input type="text" x-model="form.client" class="input" />
+            </div>
             <div class="field-col">
               <label class="field-label">Data (MMDDYYYY)</label>
               <input type="text" x-model="form.date_mmddyyyy" class="input"
@@ -181,93 +297,121 @@
             </div>
           </div>
 
-          <!-- Service Types -->
-          <label class="field-label">Tipos de Serviço</label>
+          <label class="field-label">Tipos de serviço</label>
           <div class="chips">
             <template x-for="svc in serviceOptions" :key="svc">
-              <button @click="toggleService(svc)"
+              <button type="button" @click="toggleService(svc)"
                       :class="{ selected: hasService(svc) }"
                       class="chip" x-text="svc"></button>
             </template>
           </div>
 
-          <!-- Show on Home -->
-          <div style="margin: 0.25rem 0">
-            <label class="toggle-label">
-              <input type="checkbox" x-model="form.show_on_home" class="toggle-input" />
-              <span class="toggle-switch"></span>
-              Mostrar na Home
-            </label>
+          <label class="field-label">Descrição</label>
+          <textarea x-model="form.description" class="input" rows="4"
+                    placeholder="Resumo editorial…"></textarea>
+
+          <div class="field-row editor-media-row">
+            <div class="field-col">
+              <label class="field-label">Thumbnail</label>
+              <div class="upload-area">
+                <img x-show="thumbPreview || form.thumbnail"
+                     :src="thumbPreview || form.thumbnail"
+                     alt="" class="upload-preview" />
+                <input type="file" accept="image/jpeg,image/png,image/webp"
+                       @change="onThumbChange($event)"
+                       class="file-input" id="thumb-input" />
+                <label for="thumb-input" class="upload-btn">Escolher imagem</label>
+                <span class="upload-hint"
+                      x-text="thumbFile ? thumbFile.name : (form.thumbnail || 'Nenhuma imagem')"></span>
+              </div>
+            </div>
+            <div class="field-col">
+              <label class="field-label">Vídeo preview (hover)</label>
+              <div class="upload-area">
+                <video x-show="videoPreview" :src="videoPreview"
+                       class="upload-preview" muted controls></video>
+                <input type="file" accept="video/mp4,video/webm"
+                       @change="onVideoChange($event)"
+                       class="file-input" id="video-input" />
+                <label for="video-input" class="upload-btn">Escolher vídeo</label>
+                <span class="upload-hint"
+                      x-text="videoFile ? videoFile.name : (form.hover_preview || 'Nenhum vídeo')"></span>
+              </div>
+            </div>
           </div>
 
-          <!-- Home Size -->
-          <label class="field-label">Tamanho na Home</label>
-          <div class="size-picker">
-            <template x-for="s in sizeOptions" :key="s">
-              <button @click="setSize(s)"
-                      :class="{ selected: form.home_size === s }"
-                      class="size-option">
-                <div class="size-preview" :data-size="s"></div>
-                <span x-text="s"></span>
-              </button>
-            </template>
+          <label class="field-label">YouTube</label>
+          <input type="url" x-model="form.youtube_url" class="input" placeholder="https://youtube.com/..." />
+
+          <div x-show="!editorLoading && youtubeIframeBlockVisible" x-cloak class="yt-iframe-dock">
+            <h3 class="yt-iframe-dock__title">Pré-visualização (YouTube IFrame API)</h3>
+            <p class="yt-iframe-dock__note">
+              Arraste o cursor para o instante desejado e guarde os tempos. Estes segundos são gravados no projeto e
+              usados pelo <code>ingest-youtube-media.mjs</code> (FFmpeg) para capa e prévia; o Worker em si não
+              processa o vídeo.
+            </p>
+            <div class="yt-iframe-dock__row">
+              <div class="yt-iframe-dock__col yt-iframe-dock__col--player">
+                <p class="yt-iframe-dock__status" x-show="ytPlayerIniting">A carregar o leitor&hellip;</p>
+                <div id="yt-iframe-admin-host" class="yt-iframe-dock__player-host"></div>
+              </div>
+              <div class="yt-iframe-dock__col yt-iframe-dock__col--tools" x-show="!ytPlayerIniting" x-cloak>
+                <label class="yt-iframe-dock__portrait" x-show="!isYoutubeUrlShortsFormat" x-cloak>
+                  <input type="checkbox" x-model="ytPreviewPortrait" @change="_initYoutubePlayerPanel()" />
+                  <span>Pré-visualização 9:16 (vídeo vertical; use se o link não for <code>/shorts/</code>)</span>
+                </label>
+                <label class="field-label">Posição (linha de tempo)</label>
+                <input type="range" class="input yt-iframe-dock__range" min="0"
+                       :max="Math.max(0.1, (ytPlayerDuration || 0.1) - 0.02)" step="0.1" x-model.number="ytScrubTime"
+                       @input="onYtScrubInput()"
+                       :disabled="ytPlayerIniting || (ytPlayerDuration < 0.1)" />
+                <p class="yt-iframe-dock__hint" x-show="ytPlayerDuration < 0.1 && !ytPlayerIniting">
+                  A aguardar duração do vídeo&hellip;
+                </p>
+                <div class="yt-iframe-dock__actions">
+                  <button type="button" class="btn btn-secondary"
+                          :disabled="ytPlayerIniting || ytPlayerDuration < 0.1"
+                          @click="applyYoutubeThumbTime()">Guardar posição &rarr; instante da capa</button>
+                  <button type="button" class="btn btn-secondary"
+                          :disabled="ytPlayerIniting || ytPlayerDuration < 0.1"
+                          @click="applyYoutubePreviewStart()">Guardar posição &rarr; início do clip 5s</button>
+                </div>
+                <p class="yt-iframe-dock__readout">
+                  Instante capa: <strong x-text="formatYoutubeSec(form.youtube_thumb_time_sec)"></strong>
+                  &nbsp;|&nbsp; Início prévia 5s: <strong x-text="formatYoutubeSec(form.youtube_preview_start_sec)"></strong>
+                </p>
+              </div>
+            </div>
           </div>
 
-          <!-- Published -->
-          <div style="margin: 0.25rem 0">
-            <label class="toggle-label">
-              <input type="checkbox" x-model="form.published" class="toggle-input" />
-              <span class="toggle-switch"></span>
-              Publicado
-            </label>
+          <label class="field-label">Pixieset</label>
+          <input type="url" x-model="form.pixieset_url" class="input" placeholder="https://…pixieset.com/nome-da-galeria/" />
+          <p class="field-hint" style="margin:0.35rem 0 0.5rem; font-size:0.75rem; color:var(--text-2); line-height:1.45">
+            <strong>cid</strong> (coleção): o rede do browser muitas vezes <em>não</em> mostra um pedido chamado
+            <code>loadphotos</code> (nome na URL pode variar ou o pedido só aparece ao fazer scroll na galeria).
+            Abra o <strong>mesmo URL Pixieset noutro separador</strong> (não dentro de iframe), F12 →
+            <strong>Rede</strong> → tipo <strong>Fetch/XHR</strong> ou «Tudo» → filtre por
+            <code>client</code>, <code>pixieset</code> ou <code>cuk</code> → faça scroll na galeria.
+            Em alternativa: <strong>ver código-fonte da página</strong> (Ctrl+U) e procure
+            <code>"cid":</code> ou <code>cid=</code>.             O <code>cid</code> (número longo) é o <strong>mesmo</strong> em quase todos os pedidos — identifica
+            a coleção. A diferença é o <code>gs=</code> (secção): o <code>loadphotos</code> de ~6–7&nbsp;kB
+            costuma ser o álbum principal; os mais pequenos (ex. <code>gs=evento1</code>) são outro álbum
+            do mesmo <code>cid</code>. Para importar, pode colar só o <strong>número do
+            <code>cid</code> ou a <em>URL completa</em></strong> do pedido certo (o Worker lê
+            o <code>gs</code> a partir do link).
+          </p>
+          <input type="text" x-model="pixiesetCidOverride" class="input"
+                 placeholder="Ex.: 123456789 ou URL completa …?cuk=…&amp;cid=123456789&…"
+                 style="margin-bottom:0.5rem" />
+          <div class="editor-pixieset-import">
+            <button type="button" class="btn btn-secondary" :disabled="pixiesetBusy || !((form.pixieset_url || '').trim())"
+                    @click="generatePixiesetFromLink('thumb')">Gerar miniatura (capa)</button>
+            <button type="button" class="btn btn-secondary" :disabled="pixiesetBusy || !((form.pixieset_url || '').trim())"
+                    @click="generatePixiesetFromLink('video')">Gerar vídeo preview (5 fotos)</button>
+            <button type="button" class="btn btn-secondary" :disabled="pixiesetBusy || !((form.pixieset_url || '').trim())"
+                    @click="generatePixiesetFromLink('both')">Gerar capa e vídeo</button>
           </div>
 
-          <!-- Order -->
-          <label class="field-label">Ordem</label>
-          <input type="number" x-model.number="form.order" class="input" min="1" />
-
-          <!-- Thumbnail -->
-          <label class="field-label">Thumbnail</label>
-          <div class="upload-area">
-            <img x-show="thumbPreview || form.thumbnail"
-                 :src="thumbPreview || form.thumbnail"
-                 alt="" class="upload-preview" />
-            <input type="file" accept="image/jpeg,image/png,image/webp"
-                   @change="onThumbChange($event)"
-                   class="file-input" id="thumb-input" />
-            <label for="thumb-input" class="upload-btn">Escolher imagem</label>
-            <span class="upload-hint"
-                  x-text="thumbFile ? thumbFile.name : (form.thumbnail || 'Nenhuma imagem')"></span>
-          </div>
-
-          <!-- Video hover -->
-          <label class="field-label">Vídeo Preview (hover)</label>
-          <div class="upload-area">
-            <video x-show="videoPreview" :src="videoPreview"
-                   class="upload-preview" muted controls></video>
-            <input type="file" accept="video/mp4,video/webm"
-                   @change="onVideoChange($event)"
-                   class="file-input" id="video-input" />
-            <label for="video-input" class="upload-btn">Escolher vídeo</label>
-            <span class="upload-hint"
-                  x-text="videoFile ? videoFile.name : (form.hover_preview || 'Nenhum vídeo')"></span>
-          </div>
-
-          <!-- YouTube URL -->
-          <label class="field-label">YouTube URL</label>
-          <input type="url" x-model="form.youtube_url" class="input"
-                 placeholder="https://youtube.com/..." />
-
-          <!-- Pixieset URL -->
-          <label class="field-label">Pixieset URL</label>
-          <input type="url" x-model="form.pixieset_url" class="input"
-                 placeholder="https://pixieset.com/..." />
-
-          <!-- Markdown body -->
-          <label class="field-label">Conteúdo</label>
-          <textarea id="md-editor"></textarea>
-
-          <!-- Actions -->
           <div class="editor-actions">
             <button type="button" @click="saveProject()" :disabled="publishing"
                     class="btn btn-primary btn-lg" style="flex:1">
@@ -283,16 +427,14 @@
             </button>
           </div>
         </div>
-      </aside>
-    </main>
+      </div>
+    </div>
   </div>
 
-  <!-- ========== Toast ========== -->
   <div x-show="toast" x-transition class="toast" :class="toast?.type" x-cloak>
     <span x-text="toast?.msg"></span>
   </div>
 
-  <!-- Publicação em andamento -->
   <div x-show="publishing" x-cloak class="publish-overlay" aria-live="polite" aria-busy="true">
     <div class="publish-overlay-card">
       <div class="spinner"></div>

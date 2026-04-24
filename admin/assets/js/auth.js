@@ -21,7 +21,11 @@ class Auth {
   }
 
   login() {
-    window.location.href = `${this._apiBase}/api/auth/github`;
+    const u = new URL(`${this._apiBase}/api/auth/github`);
+    try {
+      u.searchParams.set('return_to', window.location.href);
+    } catch { /* ignore */ }
+    window.location.href = u.toString();
   }
 
   async logout(api) {

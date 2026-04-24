@@ -3,7 +3,7 @@ import { error } from '../utils/response.js';
 /**
  * GET público para objetos R2 — permite MEDIA_BASE_URL = https://<worker>/media
  * sem domínio customizado na zona Cloudflare (demo, fork pessoal, etc.).
- * Só aceita chaves sob prefixo projects/.
+ * Só aceita chaves sob prefixo projects/ ou site/ (Hero em R2).
  */
 export async function handlePublicMedia(env, pathname) {
   const prefix = '/media/';
@@ -11,7 +11,7 @@ export async function handlePublicMedia(env, pathname) {
 
   let key = decodeURIComponent(pathname.slice(prefix.length));
   if (!key || key.includes('..') || key.startsWith('/')) return error('Bad request', 400);
-  if (!key.startsWith('projects/')) return error('Not found', 404);
+  if (!key.startsWith('projects/') && !key.startsWith('site/')) return error('Not found', 404);
 
   const obj = await env.MEDIA.get(key);
   if (!obj) return error('Not found', 404);

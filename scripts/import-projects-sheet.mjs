@@ -370,12 +370,10 @@ function rowToPayload(row, index1) {
     client: (row.client || '').trim() || null,
     date_mmddyyyy: date_mmddyyyy || null,
     year: year != null ? year : null,
-    show_on_home: true,
     order: index1,
     home_size: pickHomeSize(index1 + title.length),
     youtube_url: yt || null,
     pixieset_url: (row.pixieset_url || '').trim() || null,
-    published: true,
   };
 }
 

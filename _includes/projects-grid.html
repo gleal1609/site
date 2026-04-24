@@ -3,10 +3,11 @@
 {% if all_projects == nil or all_projects.size == 0 %}
   {% assign all_projects = site.projects %}
 {% endif %}
-{% assign home_projects = all_projects | where: "show_on_home", true %}
-{% comment %} Primary sort: order (CMS). Tie-break: date (newest first). {% endcomment %}
-{% assign sorted_projects = home_projects | sort: "date_mmddyyyy" | reverse %}
-{% assign sorted_projects = sorted_projects | sort: "order" %}
+{% comment %}
+  A Home mostra TODOS os projetos (migration 0005 removeu `show_on_home` e
+  `published`). Ordenação: data (mais recente primeiro), alinhado ao export D1.
+{% endcomment %}
+{% assign sorted_projects = all_projects | sort: "date_mmddyyyy" | reverse %}
 {% comment %} Total projects to display: {{ sorted_projects.size }} {% endcomment %}
 <div id="masonry-container" class="masonry-container">
   <div class="projects-grid" data-total-projects="{{ sorted_projects.size }}">
@@ -16,7 +17,8 @@
       {% else %}
         {% assign proj_url = project.slug | prepend: "/projects/" | append: "/" %}
       {% endif %}
-      <a href="{{ proj_url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-order="{{ project.order | default: 999 }}"{% if project.home_col != nil %} data-col="{{ project.home_col }}"{% endif %}{% if project.home_row != nil %} data-row="{{ project.home_row }}"{% endif %}>
+      {% if project.service_types %}{% capture _svcjson %}{{ project.service_types | jsonify }}{% endcapture %}{% else %}{% assign _svcjson = '[]' %}{% endif %}
+      <a href="{{ proj_url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-services="{{ _svcjson | replace: '"', '&quot;' }}">
       <div class="project-thumbnail-container">
         {% assign _thumb = project.thumbnail | strip %}
         {% assign _hover = project.hover_preview | strip %}

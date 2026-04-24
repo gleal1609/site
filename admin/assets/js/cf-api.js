@@ -88,20 +88,53 @@ class CfAPI {
     return this._req(`/api/projects/${slug}`, { method: 'DELETE' });
   }
 
-  reorderProjects(items) {
-    return this._req('/api/projects/reorder', { method: 'POST', body: { items } });
-  }
-
-  uploadMedia(slug, type, file) {
+  /**
+   * Upload do vídeo da Hero (R2 `site/…`); sem slug.
+   * @param {'hero_video'} type
+   */
+  uploadSiteMedia(type, file) {
     const form = new FormData();
-    form.append('slug', slug);
     form.append('type', type);
     form.append('file', file);
     return this._req('/api/upload', { method: 'POST', body: form });
   }
 
+  uploadMedia(slug, type, file) {
+    const form = new FormData();
+    if (slug) form.append('slug', slug);
+    form.append('type', type);
+    form.append('file', file);
+    return this._req('/api/upload', { method: 'POST', body: form });
+  }
+
+  getSettings() {
+    return this._req('/api/site-settings');
+  }
+
+  /**
+   * @param {string} key
+   * @param {string|null} value R2 key (site/...) ou URL
+   */
+  updateSetting(key, value) {
+    return this._req(`/api/site-settings/${key}`, { method: 'PATCH', body: { value } });
+  }
+
   triggerDeploy() {
     return this._req('/api/deploy', { method: 'POST' });
+  }
+
+  /**
+   * Resolve URLs de capa e primeiras imagens a partir de uma galeria Pixieset pública.
+   * @param {string} galleryUrl
+   * @param {string} [cid] opcional, se a extracção do HTML falhar
+   */
+  pixiesetResolve(galleryUrl, cid) {
+    const p = new URLSearchParams();
+    p.set('url', galleryUrl);
+    if (cid != null && String(cid).trim() !== '') {
+      p.set('cid', String(cid).trim());
+    }
+    return this._req(`/api/pixieset/resolve?${p.toString()}`);
   }
 
   logout() {

@@ -72,28 +72,36 @@ async function downloadVideo(dir, url) {
   return join(dir, vid);
 }
 
-async function extractPoster(ffmpeg, videoPath, posterJpg) {
-  await execFileAsync(ffmpeg, [
-    '-y',
-    '-i', videoPath,
-    '-vframes', '1',
-    '-q:v', '85',
-    posterJpg,
-  ], { maxBuffer: 8 * 1024 * 1024 });
+/** -ss antes de -i seria input seek; após -i o FFmpeg procura o instante. Semântica: instante aprox. em segundos. */
+async function extractPoster(ffmpeg, videoPath, posterJpg, timeSec = 0) {
+  const t = Math.max(0, Number(timeSec) || 0);
+  const args = ['-y', '-i', videoPath];
+  if (t > 0) {
+    args.push('-ss', String(t));
+  }
+  args.push('-vframes', '1', '-q:v', '85', posterJpg);
+  await execFileAsync(ffmpeg, args, { maxBuffer: 8 * 1024 * 1024 });
 }
 
-async function extractHover(ffmpeg, videoPath, hoverMp4) {
-  await execFileAsync(ffmpeg, [
-    '-y',
-    '-i', videoPath,
-    '-t', '5',
-    '-an',
-    '-c:v', 'libx264',
-    '-preset', 'fast',
-    '-crf', '23',
-    '-movflags', '+faststart',
-    hoverMp4,
-  ], { maxBuffer: 16 * 1024 * 1024 });
+async function extractHover(ffmpeg, videoPath, hoverMp4, startSec = 0, durationSec = 5) {
+  const s = Math.max(0, Number(startSec) || 0);
+  const d = Math.max(0.1, Math.min(120, Number(durationSec) || 5));
+  await execFileAsync(
+    ffmpeg,
+    [
+      '-y',
+      '-i', videoPath,
+      '-ss', String(s),
+      '-t', String(d),
+      '-an',
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '23',
+      '-movflags', '+faststart',
+      hoverMp4,
+    ],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
 }
 
 async function putR2(key, filePath, contentType) {
@@ -139,8 +147,16 @@ async function notifyWorker(slug, thumbKey, hoverKey) {
   return JSON.parse(text);
 }
 
-/** Um projeto: download → poster + hover → R2 → D1. */
-export async function ingestOne(slug, youtubeUrl) {
+/**
+ * @param {object} [opts] — campos D1: youtube_thumb_time_sec, youtube_preview_start_sec (de preferência
+ * escolhidos no admin; omissão = 0, comportamento clássico: capa 0s, prévia 0–5s).
+ */
+export async function ingestOne(slug, youtubeUrl, opts = {}) {
+  const thumbT = Math.max(0, Number(opts.youtube_thumb_time_sec) || 0);
+  const prevS = Math.max(0, Number(opts.youtube_preview_start_sec) || 0);
+  if (thumbT > 0 || prevS > 0) {
+    console.log('Tempos: capa =', thumbT, 's | início prévia 5s =', prevS, 's');
+  }
   const thumbKey = `projects/${slug}/yt-poster.jpg`;
   const hoverKey = `projects/${slug}/hover-5s.mp4`;
 
@@ -151,10 +167,10 @@ export async function ingestOne(slug, youtubeUrl) {
   try {
     console.log('[1/5] yt-dlp…');
     const videoPath = await downloadVideo(dir, youtubeUrl);
-    console.log('[2/5] ffmpeg poster (1º frame)…');
-    await extractPoster(ffmpegBin(), videoPath, posterPath);
-    console.log('[3/5] ffmpeg hover (5s, sem áudio)…');
-    await extractHover(ffmpegBin(), videoPath, hoverPath);
+    console.log('[2/5] ffmpeg capa (frame @', thumbT, 's)…');
+    await extractPoster(ffmpegBin(), videoPath, posterPath, thumbT);
+    console.log('[3/5] ffmpeg hover (5s a partir de', prevS, 's)…');
+    await extractHover(ffmpegBin(), videoPath, hoverPath, prevS, 5);
     console.log('[4/5] R2 upload…');
     await putR2(thumbKey, posterPath, 'image/jpeg');
     await putR2(hoverKey, hoverPath, 'video/mp4');
@@ -196,7 +212,10 @@ async function runAll() {
     const youtubeUrl = row.youtube_url;
     console.log(`\n========== [${i + 1}/${projects.length}] ${slug} ==========`);
     try {
-      await ingestOne(slug, youtubeUrl);
+      await ingestOne(slug, youtubeUrl, {
+        youtube_thumb_time_sec: row.youtube_thumb_time_sec,
+        youtube_preview_start_sec: row.youtube_preview_start_sec,
+      });
       out.ok.push(slug);
     } catch (e) {
       const msg = e.message || String(e);

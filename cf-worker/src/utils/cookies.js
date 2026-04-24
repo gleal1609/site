@@ -48,3 +48,13 @@ export function oauthStateCookie(state) {
 export function clearOauthStateCookie() {
   return '__cf_oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0';
 }
+
+/** URL de regresso pós-OAuth (admin local ou Netlify), HttpOnly, curta duração. */
+export function oauthReturnCookie(absoluteUrl) {
+  const v = encodeURIComponent(absoluteUrl);
+  return `__cf_oauth_return=${v}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`;
+}
+
+export function clearOauthReturnCookie() {
+  return '__cf_oauth_return=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0';
+}
