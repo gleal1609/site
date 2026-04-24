@@ -157,8 +157,10 @@ function adminApp() {
     ytPreviewPortrait: false,
     /** Estado do botão «Gerar capa e prévia» para evitar duplos cliques enquanto o dispatch decorre. */
     ytIngestBusy: false,
-    /** URL da última execução no GitHub Actions (mostrada após dispatch, para o utilizador seguir o log). */
+    /** URL do workflow no GitHub Actions (permanente após primeiro dispatch com sucesso; persistido em localStorage). */
     ytIngestLastRunUrl: '',
+    /** ISO timestamp do último dispatch feito a partir deste browser. */
+    ytIngestLastRunAt: '',
     /** Importação Pixieset — capa + slideshow (Worker resolve + proxy) */
     pixiesetBusy: false,
     pixiesetCidOverride: '',
@@ -196,6 +198,15 @@ function adminApp() {
       }
       this._auth = new Auth(apiBase);
       this._api = new CfAPI(apiBase);
+
+      try {
+        const savedRunUrl = localStorage.getItem('reverso-yt-ingest-last-run-url');
+        const savedRunAt = localStorage.getItem('reverso-yt-ingest-last-run-at');
+        if (savedRunUrl) this.ytIngestLastRunUrl = savedRunUrl;
+        if (savedRunAt) this.ytIngestLastRunAt = savedRunAt;
+      } catch (_) {
+        /* localStorage indisponível — ignorar. */
+      }
 
       this._beforeUnloadBound = (e) => {
         if (this.hasUnpublishedChanges) {
@@ -1204,10 +1215,19 @@ function adminApp() {
       this.ytIngestBusy = true;
       try {
         const res = await this._api.ingestYoutube(slug);
-        this.ytIngestLastRunUrl = res?.actions_url || '';
+        const url = res?.actions_url || '';
+        if (url) {
+          this.ytIngestLastRunUrl = url;
+          this.ytIngestLastRunAt = new Date().toISOString();
+          try {
+            localStorage.setItem('reverso-yt-ingest-last-run-url', url);
+            localStorage.setItem('reverso-yt-ingest-last-run-at', this.ytIngestLastRunAt);
+          } catch (_) {
+            /* localStorage indisponível (modo privado, etc.) — ignoramos. */
+          }
+        }
         this._toast(
-          res?.message ||
-            'Processamento iniciado no GitHub Actions. Demora 2–5 min; reabra o projeto para ver os ficheiros novos.',
+          'Processamento iniciado no GitHub Actions. Demora 2–5 min. Use o link «Ver execuções» ao lado do botão para acompanhar o log; reabra o projeto depois para ver a capa/prévia novas.',
           'success',
         );
       } catch (e) {

@@ -390,7 +390,7 @@
                           :disabled="ytPlayerIniting || ytPlayerDuration < 0.1"
                           @click="applyYoutubePreviewStart()">Guardar posição &rarr; início do clip 5s</button>
                 </div>
-                <div class="yt-iframe-dock__actions" style="margin-top:0.6rem">
+                <div class="yt-iframe-dock__actions" style="margin-top:0.6rem;align-items:center">
                   <button type="button" class="btn btn-primary"
                           :disabled="ytIngestBusy || publishing || isNew || !((form.youtube_url || '').trim())"
                           @click="ingestYoutubeFromPanel()"
@@ -400,10 +400,23 @@
                   </button>
                   <a x-show="ytIngestLastRunUrl" x-cloak
                      :href="ytIngestLastRunUrl" target="_blank" rel="noopener"
-                     class="btn btn-secondary">Ver execuções</a>
+                     class="btn btn-secondary"
+                     title="Abre o separador Actions do GitHub numa nova aba para acompanhares o log.">
+                    Ver execuções no GitHub ↗
+                  </a>
+                  <small x-show="ytIngestLastRunAt" x-cloak
+                         style="color:var(--text-2); font-size:0.78rem">
+                    Último disparo: <span x-text="new Date(ytIngestLastRunAt).toLocaleString()"></span>
+                  </small>
                 </div>
                 <p class="yt-iframe-dock__hint" x-show="isNew">
                   Salve e publique o projeto primeiro — a ingestão usa o slug gravado no servidor.
+                </p>
+                <p class="yt-iframe-dock__hint" x-show="!ytIngestLastRunUrl && !isNew">
+                  Sem execuções registadas neste browser. Depois de clicares em «Gerar capa e prévia»,
+                  aparece aqui o link directo para o log no GitHub.
+                  Também podes abrir <code>Actions → Ingest YouTube media</code> no teu repositório
+                  (mesmo valor configurado em <code>GITHUB_REPO</code> no Worker).
                 </p>
                 <p class="yt-iframe-dock__readout">
                   Instante capa: <strong x-text="formatYoutubeSec(form.youtube_thumb_time_sec)"></strong>
