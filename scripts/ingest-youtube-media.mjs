@@ -14,7 +14,10 @@
  *   WORKER_API_BASE=https://<worker>.<subconta>.workers.dev
  *   CF_BUILD_TOKEN=<BUILD_TOKEN ou JWT read:export>
  *
- * Um projeto:
+ * Um projeto (URL lida do manifesto — instante(s) vêm do D1):
+ *   node scripts/ingest-youtube-media.mjs --slug <slug>
+ *
+ * Um projeto (URL explícita, instantes = 0 — compatibilidade com uso antigo):
  *   node scripts/ingest-youtube-media.mjs <slug> <youtube_url>
  *
  * Todos os projetos com youtube_url no D1 (lista via GET /api/projects/youtube-manifest):
@@ -240,6 +243,7 @@ async function runAll() {
 function printUsage() {
   console.error(`
 Uso:
+  node scripts/ingest-youtube-media.mjs --slug <slug>
   node scripts/ingest-youtube-media.mjs <slug> <youtube_url>
   node scripts/ingest-youtube-media.mjs --all
 
@@ -248,10 +252,36 @@ Opcional (só --all): INGEST_DELAY_MS=4000
 `);
 }
 
+/**
+ * Ingest de um único projecto lendo URL e instantes do manifesto do Worker
+ * (D1). É o modo usado pelo GitHub Actions disparado a partir do admin.
+ */
+async function runSingleFromManifest(slug) {
+  const projects = await fetchYoutubeManifest();
+  const row = projects.find((p) => p && p.slug === slug);
+  if (!row) {
+    throw new Error(`Projeto «${slug}» não existe no manifesto ou não tem youtube_url.`);
+  }
+  if (!row.youtube_url) {
+    throw new Error(`Projeto «${slug}» não tem youtube_url.`);
+  }
+  console.log(`[single] slug=${slug} url=${row.youtube_url}`);
+  await ingestOne(slug, row.youtube_url, {
+    youtube_thumb_time_sec: row.youtube_thumb_time_sec,
+    youtube_preview_start_sec: row.youtube_preview_start_sec,
+  });
+}
+
 async function main() {
   const raw = process.argv.slice(2);
   const all = raw.includes('--all') || raw.includes('-a');
-  const positional = raw.filter((x) => !x.startsWith('-') && x !== '--all' && x !== '-a');
+  const slugFlagIdx = raw.findIndex((x) => x === '--slug' || x === '-s');
+  const slugArg = slugFlagIdx >= 0 ? raw[slugFlagIdx + 1] : null;
+  const positional = raw.filter((x, i) => {
+    if (x.startsWith('-')) return false;
+    if (slugFlagIdx >= 0 && i === slugFlagIdx + 1) return false;
+    return x !== '--all' && x !== '-a';
+  });
 
   if (!ACCOUNT_ID || !ACCESS_KEY || !SECRET_KEY) {
     console.error('Defina R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.');
@@ -264,6 +294,11 @@ async function main() {
 
   if (all) {
     await runAll();
+    return;
+  }
+
+  if (slugArg) {
+    await runSingleFromManifest(slugArg);
     return;
   }
 

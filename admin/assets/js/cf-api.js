@@ -124,6 +124,17 @@ class CfAPI {
   }
 
   /**
+   * Dispara o workflow do GitHub Actions que (re)gera capa e prévia de hover
+   * a partir do YouTube. 202 devolve `{ actions_url, message }`.
+   * @param {string} slug
+   */
+  ingestYoutube(slug) {
+    return this._req(`/api/projects/${encodeURIComponent(slug)}/ingest-youtube`, {
+      method: 'POST',
+    });
+  }
+
+  /**
    * Resolve URLs de capa e primeiras imagens a partir de uma galeria Pixieset pública.
    * @param {string} galleryUrl
    * @param {string} [cid] opcional, se a extracção do HTML falhar

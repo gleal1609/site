@@ -355,9 +355,14 @@
           <div x-show="!editorLoading && youtubeIframeBlockVisible" x-cloak class="yt-iframe-dock">
             <h3 class="yt-iframe-dock__title">Pré-visualização (YouTube IFrame API)</h3>
             <p class="yt-iframe-dock__note">
-              Arraste o cursor para o instante desejado e guarde os tempos. Estes segundos são gravados no projeto e
-              usados pelo <code>ingest-youtube-media.mjs</code> (FFmpeg) para capa e prévia; o Worker em si não
-              processa o vídeo.
+              <strong>Instantes no CMS:</strong> use os botões abaixo e depois <strong>Salvar</strong> e
+              <strong>Publicar</strong> — os segundos ficam na base de dados e no manifesto da API.
+              <strong>Ficheiros no site (miniatura e vídeo de hover):</strong> o painel e o deploy <em>não</em>
+              geram novos JPEG/MP4; esses ficheiros estão no R2. Depois de alterar os instantes, é preciso correr
+              localmente <code>node scripts/ingest-youtube-media.mjs</code> (comentários no topo do ficheiro) para extrair nova
+              capa e clip a partir do vídeo do YouTube; sem isso, a Home continua a mostrar os mesmos URLs de mídia.
+              Avisos <code>postMessage</code> do <code>www-widgetapi.js</code> na consola são frequentes e não impedem
+              guardar os tempos.
             </p>
             <div class="yt-iframe-dock__row">
               <div class="yt-iframe-dock__col yt-iframe-dock__col--player">
@@ -385,6 +390,21 @@
                           :disabled="ytPlayerIniting || ytPlayerDuration < 0.1"
                           @click="applyYoutubePreviewStart()">Guardar posição &rarr; início do clip 5s</button>
                 </div>
+                <div class="yt-iframe-dock__actions" style="margin-top:0.6rem">
+                  <button type="button" class="btn btn-primary"
+                          :disabled="ytIngestBusy || publishing || isNew || !((form.youtube_url || '').trim())"
+                          @click="ingestYoutubeFromPanel()"
+                          title="Dispara um workflow no GitHub Actions que (re)gera capa JPEG e vídeo de hover MP4 a partir do YouTube e grava no R2.">
+                    <span x-show="!ytIngestBusy">Gerar capa e prévia (GitHub Actions)</span>
+                    <span x-show="ytIngestBusy">A iniciar&hellip;</span>
+                  </button>
+                  <a x-show="ytIngestLastRunUrl" x-cloak
+                     :href="ytIngestLastRunUrl" target="_blank" rel="noopener"
+                     class="btn btn-secondary">Ver execuções</a>
+                </div>
+                <p class="yt-iframe-dock__hint" x-show="isNew">
+                  Salve e publique o projeto primeiro — a ingestão usa o slug gravado no servidor.
+                </p>
                 <p class="yt-iframe-dock__readout">
                   Instante capa: <strong x-text="formatYoutubeSec(form.youtube_thumb_time_sec)"></strong>
                   &nbsp;|&nbsp; Início prévia 5s: <strong x-text="formatYoutubeSec(form.youtube_preview_start_sec)"></strong>

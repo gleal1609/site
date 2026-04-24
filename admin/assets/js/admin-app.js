@@ -155,6 +155,10 @@ function adminApp() {
     ytPlayerIniting: false,
     /** Pré-visualização 9:16 no admin quando o URL não é /shorts/ (ex.: watch?v= com vídeo vertical). */
     ytPreviewPortrait: false,
+    /** Estado do botão «Gerar capa e prévia» para evitar duplos cliques enquanto o dispatch decorre. */
+    ytIngestBusy: false,
+    /** URL da última execução no GitHub Actions (mostrada após dispatch, para o utilizador seguir o log). */
+    ytIngestLastRunUrl: '',
     /** Importação Pixieset — capa + slideshow (Worker resolve + proxy) */
     pixiesetBusy: false,
     pixiesetCidOverride: '',
@@ -1136,6 +1140,7 @@ function adminApp() {
 
     applyYoutubeThumbTime() {
       this.form.youtube_thumb_time_sec = Number(this.ytScrubTime) || 0;
+      this.formDirty = true;
       this._persistYouTubeTimeDraft();
     },
 
@@ -1143,7 +1148,76 @@ function adminApp() {
       const d = this.ytPlayerDuration || 0;
       const t = Math.min(Number(this.ytScrubTime) || 0, Math.max(0, d - 5.01));
       this.form.youtube_preview_start_sec = t;
+      this.formDirty = true;
       this._persistYouTubeTimeDraft();
+    },
+
+    /**
+     * Envia um `repository_dispatch` ao GitHub Actions via Worker.
+     * Requer projecto já publicado (tem de existir no D1 para o runner lê-lo).
+     * Se houver alterações não publicadas (ex.: instantes novos ou URL novo),
+     * publica primeiro para garantir que o runner usa os valores correctos.
+     */
+    async ingestYoutubeFromPanel() {
+      if (this.ytIngestBusy) return;
+      if (this.isNew) {
+        this._toast(
+          'Guarde e publique o projeto antes de gerar capa e prévia.',
+          'warning',
+        );
+        return;
+      }
+      const slug = this.form?._slug;
+      if (!slug) {
+        this._toast('Slug do projeto em falta.', 'error');
+        return;
+      }
+      const url = (this.form?.youtube_url || '').trim();
+      if (!url) {
+        this._toast('URL do YouTube em falta.', 'error');
+        return;
+      }
+
+      const needsPublish =
+        this.formDirty ||
+        this.thumbFile ||
+        this.videoFile ||
+        !!this.projectDrafts[slug];
+      if (needsPublish) {
+        const ok = confirm(
+          'Há alterações não publicadas. Publicar agora antes de gerar capa e prévia?\n' +
+            'Pode clicar em «Cancelar» para abortar.',
+        );
+        if (!ok) return;
+        try {
+          await this.publishAll();
+        } catch (e) {
+          this._toast('Publicação falhou; ingestão abortada: ' + (e.message || e), 'error');
+          return;
+        }
+        if (this.projectDrafts[slug]) {
+          this._toast('Há ainda rascunho por publicar; ingestão abortada.', 'warning');
+          return;
+        }
+      }
+
+      this.ytIngestBusy = true;
+      try {
+        const res = await this._api.ingestYoutube(slug);
+        this.ytIngestLastRunUrl = res?.actions_url || '';
+        this._toast(
+          res?.message ||
+            'Processamento iniciado no GitHub Actions. Demora 2–5 min; reabra o projeto para ver os ficheiros novos.',
+          'success',
+        );
+      } catch (e) {
+        this._toast(
+          'Falha a iniciar o processamento: ' + (e.message || String(e)),
+          'error',
+        );
+      } finally {
+        this.ytIngestBusy = false;
+      }
     },
 
     formatYoutubeSec(v) {

@@ -27,6 +27,7 @@ import {
   handleSiteSettingsPatch,
 } from './routes/site-settings.js';
 import { handlePixiesetProxy, handlePixiesetResolve } from './routes/pixieset.js';
+import { handleIngestYoutube } from './routes/ingest-youtube.js';
 
 function matchRoute(method, path) {
   const slug = matchApiProjectSlug(path);
@@ -180,6 +181,11 @@ async function route(request, env, ctx, path) {
   const siteSettingMatch = path.match(/^\/api\/site-settings\/([a-z0-9_]+)$/i);
   if (siteSettingMatch && method === 'PATCH') {
     return handleSiteSettingsPatch(siteSettingMatch[1], request, env, ctx);
+  }
+
+  const ingestMatch = path.match(/^\/api\/projects\/([^/]+)\/ingest-youtube$/);
+  if (ingestMatch && method === 'POST') {
+    return handleIngestYoutube(ingestMatch[1], env, ctx);
   }
 
   const { slug } = matchRoute(method, path);
