@@ -1,6 +1,21 @@
 _site
+# Vídeos de rascunho / pasta local (não confundir com assets/video/projects/ no site)
+assets/videos/
 .sass-cache
 .jekyll-cache
 .jekyll-metadata
-vendor
+# Bundler only — do NOT use plain "vendor" (would ignore assets/vendor/font-awesome)
+vendor/bundle/
 Gemfile.lock
+testsprite_tests/
+_data/projects.json
+_config.local.yml
+cf-worker/node_modules/
+scripts/node_modules/
+cf-worker/.wrangler/
+cf-worker/.dev.vars
+cf-worker/_site/
+cf-worker/migrations/
+DOCUMENTACAO.md
+MIGRACAO_CONTAS_CLIENTE.md
+youtube_feature_spec.md

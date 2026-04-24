@@ -1,0 +1,60 @@
+backend:
+  name: github
+  repo: gleal1609/site
+  branch: temp
+
+media_folder: /assets/img/projects
+public_folder: /assets/img/projects
+
+media_libraries:
+  default:
+    config:
+      max_file_size: 25000000
+
+collections:
+  - name: projects
+    label: Projetos
+    label_singular: Projeto
+    folder: _projects/
+    create: true
+    delete: true
+    slug: "{{fields.date_mmddyyyy}}-{{slug}}-{{fields.client}}"
+    summary: "{{title}} — {{client}} ({{year}})"
+    extension: md
+    editor:
+      preview: false
+    fields:
+      - { label: "Título", name: title, widget: string }
+      - { label: "Thumbnail", name: thumbnail, widget: image }
+      - label: "Vídeo preview (hover)"
+        name: hover_preview
+        widget: file
+        required: false
+        accept: ".mp4,.webm,video/mp4,video/webm"
+        media_folder: /assets/video/projects
+        public_folder: /assets/video/projects
+      - label: "Tipos de serviço"
+        name: service_types
+        widget: select
+        multiple: true
+        options:
+          - VFX
+          - ARTISTICOS
+          - MIDIAS SOCIAIS
+          - INSTITUCIONAL
+          - EVENTOS
+      - { label: "Cliente", name: client, widget: string }
+      - label: "Data (MMDDYYYY)"
+        name: date_mmddyyyy
+        widget: string
+        pattern: ["^\\d{8}$", "Use formato MMDDYYYY com 8 dígitos (ex: 06182025)"]
+      - { label: "Ano", name: year, widget: number, value_type: int }
+      - { label: "Ordem (portfólio e home)", name: order, widget: number, value_type: int }
+      - label: "Tamanho na Home"
+        name: home_size
+        widget: select
+        options: ["1x1", "1x2", "2x1", "2x2"]
+        default: "1x1"
+      - { label: "YouTube URL", name: youtube_url, widget: string, required: false }
+      - { label: "Pixieset URL", name: pixieset_url, widget: string, required: false }
+      - { label: "Conteúdo", name: body, widget: markdown, required: false }

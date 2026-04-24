@@ -1,0 +1,101 @@
+# Gera capa (JPEG) e vídeo de hover (MP4, 5 s) a partir do YouTube de UM projecto.
+#
+# Disparado a partir do admin (CMS) — o Worker Cloudflare envia `repository_dispatch`
+# com `event_type: ingest-youtube` e `client_payload: { slug: "<slug>" }`. O script
+# lê URL e instantes (`youtube_thumb_time_sec` / `youtube_preview_start_sec`) do D1
+# via `/api/projects/youtube-manifest`, extrai os ficheiros com `yt-dlp` + `ffmpeg`,
+# envia para R2 e grava as chaves em D1 via `/api/projects/media-keys`.
+#
+# Pode também ser corrido manualmente em «Actions → Ingest YouTube media → Run workflow»,
+# indicando o slug. Uso ideal: < 5 min por projeto; usa o plano gratuito do GitHub Actions.
+
+name: Ingest YouTube media
+
+on:
+  repository_dispatch:
+    types: [ingest-youtube]
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Slug do projeto (tem de ter youtube_url no D1)"
+        required: true
+        type: string
+
+concurrency:
+  # Evita duas ingestões simultâneas para o mesmo slug (uploads a sobrepor-se).
+  group: ingest-youtube-${{ github.event.client_payload.slug || inputs.slug }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    name: ingest ${{ github.event.client_payload.slug || inputs.slug }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Repo secrets — ver instruções em docs/cms-ingest-youtube.md
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      WORKER_API_BASE: ${{ secrets.WORKER_API_BASE }}
+      CF_BUILD_TOKEN: ${{ secrets.CF_BUILD_TOKEN }}
+    steps:
+      - name: Resolve slug
+        id: slug
+        shell: bash
+        run: |
+          SLUG="${{ github.event.client_payload.slug || inputs.slug }}"
+          if [[ -z "$SLUG" ]]; then
+            echo "::error::Sem slug no payload (client_payload.slug / inputs.slug)"; exit 2
+          fi
+          if ! [[ "$SLUG" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$ ]]; then
+            echo "::error::Slug inválido: $SLUG"; exit 2
+          fi
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+
+      - name: Check secrets
+        shell: bash
+        run: |
+          missing=""
+          for v in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY WORKER_API_BASE CF_BUILD_TOKEN; do
+            if [[ -z "${!v:-}" ]]; then missing="$missing $v"; fi
+          done
+          if [[ -n "$missing" ]]; then
+            echo "::error::Secrets em falta:$missing (Settings → Secrets and variables → Actions)"; exit 2
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: scripts/package-lock.json
+
+      - name: Install yt-dlp (ffmpeg já vem no runner)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user --upgrade "yt-dlp>=2024.10.07"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Show toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          which yt-dlp && yt-dlp --version
+          which ffmpeg && ffmpeg -version | head -n 1
+          node --version
+
+      - name: Install scripts deps
+        working-directory: scripts
+        run: npm ci --no-audit --no-fund
+
+      - name: Ingest (yt-dlp → ffmpeg → R2 → D1)
+        working-directory: ${{ github.workspace }}
+        run: node scripts/ingest-youtube-media.mjs --slug "${{ steps.slug.outputs.slug }}"

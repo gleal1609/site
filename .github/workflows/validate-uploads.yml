@@ -1,0 +1,62 @@
+name: Validate media uploads
+
+on:
+  push:
+    paths:
+      - "assets/img/projects/**"
+      - "assets/video/projects/**"
+  pull_request:
+    paths:
+      - "assets/img/projects/**"
+      - "assets/video/projects/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate image and video files
+        shell: bash
+        env:
+          MAX_BYTES: 26214400
+        run: |
+          set -euo pipefail
+          fail=0
+
+          allowed_img_re='\.(jpg|jpeg|png|webp)$'
+          allowed_vid_re='\.(mp4|webm)$'
+
+          while IFS= read -r -d '' f; do
+            case "$f" in
+              assets/img/projects/*)
+                if [[ ! "$(basename "$f")" =~ $allowed_img_re ]]; then
+                  echo "::error file=$f::Extensão não permitida em assets/img/projects (use .jpg, .jpeg, .png ou .webp)"
+                  fail=1
+                fi
+                ;;
+              assets/video/projects/*)
+                if [[ ! "$(basename "$f")" =~ $allowed_vid_re ]]; then
+                  echo "::error file=$f::Extensão não permitida em assets/video/projects (use .mp4 ou .webm)"
+                  fail=1
+                fi
+                ;;
+            esac
+
+            if [[ -f "$f" ]]; then
+              sz=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
+              if [[ "$sz" -gt "$MAX_BYTES" ]]; then
+                echo "::error file=$f::Arquivo maior que 25MB ($sz bytes)"
+                fail=1
+              fi
+            fi
+          done < <(git ls-files -z -- 'assets/img/projects/' 'assets/video/projects/')
+
+          if [[ "$fail" -ne 0 ]]; then
+            echo "Validação falhou: corrija extensões ou tamanhos acima do limite."
+            exit 1
+          fi
+          echo "OK: extensões e tamanhos dentro do esperado."

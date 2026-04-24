@@ -1,0 +1,145 @@
+{% comment %} site.data.projects: export D1 em build. O filtro default do Liquid NÃO substitui array vazio []. {% endcomment %}
+{% assign all_projects = site.data.projects %}
+{% if all_projects == nil or all_projects.size == 0 %}
+  {% assign all_projects = site.projects %}
+{% endif %}
+{% comment %}
+  A Home mostra TODOS os projetos (migration 0005 removeu `show_on_home` e
+  `published`). Ordenação: data (mais recente primeiro), alinhado ao export D1.
+{% endcomment %}
+{% assign sorted_projects = all_projects | sort: "date_mmddyyyy" | reverse %}
+{% comment %} Total projects to display: {{ sorted_projects.size }} {% endcomment %}
+<div id="masonry-container" class="masonry-container">
+  <div class="projects-grid" data-total-projects="{{ sorted_projects.size }}">
+    {% for project in sorted_projects %}
+      {% if project.url %}
+        {% assign proj_url = project.url %}
+      {% else %}
+        {% assign proj_url = project.slug | prepend: "/projects/" | append: "/" %}
+      {% endif %}
+      {% if project.service_types %}{% capture _svcjson %}{{ project.service_types | jsonify }}{% endcapture %}{% else %}{% assign _svcjson = '[]' %}{% endif %}
+      <a href="{{ proj_url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-services="{{ _svcjson | replace: '"', '&quot;' }}">
+      <div class="project-thumbnail-container">
+        {% assign _thumb = project.thumbnail | strip %}
+        {% assign _hover = project.hover_preview | strip %}
+        {% if project.hover_preview %}
+          <video 
+            class="project-hover-video" 
+            muted 
+            playsinline 
+            loop 
+            preload="metadata"
+            poster="{% if _thumb contains '://' %}{{ _thumb }}{% else %}{{ _thumb | relative_url }}{% endif %}"
+            webkit-playsinline="true">
+            {% assign _hp = project.hover_preview | downcase %}
+            {% if _hp contains '.webm' %}
+              <source src="{% if _hover contains '://' %}{{ _hover }}{% else %}{{ _hover | relative_url }}{% endif %}" type="video/webm">
+            {% else %}
+              <source src="{% if _hover contains '://' %}{{ _hover }}{% else %}{{ _hover | relative_url }}{% endif %}" type="video/mp4">
+            {% endif %}
+          </video>
+        {% endif %}
+        <img 
+          src="{% if _thumb contains '://' %}{{ _thumb }}{% else %}{{ _thumb | relative_url }}{% endif %}" 
+          alt="{{ project.title }}"
+          class="project-thumbnail"
+          loading="lazy"
+        />
+      </div>
+      <div class="project-overlay">
+        <h3 class="project-title">{{ project.title }}</h3>
+        {% if project.client %}
+          <p class="project-client">{{ project.client }}</p>
+        {% endif %}
+      </div>
+      </a>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const items = document.querySelectorAll(".project-item");
+  var videoMap = new Map();
+
+  items.forEach((item) => {
+    var videoEl = item.querySelector(".project-hover-video");
+    if (!videoEl) return;
+
+    var thumbEl = item.querySelector(".project-thumbnail");
+    var state = { loaded: false, loading: false };
+    videoMap.set(item, { videoEl: videoEl, thumbEl: thumbEl, state: state });
+
+    item.addEventListener("mouseenter", () => playVideo(videoEl, thumbEl, state));
+    item.addEventListener("mouseleave", () => hideVideo(videoEl, thumbEl));
+    item.addEventListener("focus", () => playVideo(videoEl, thumbEl, state));
+    item.addEventListener("blur", () => hideVideo(videoEl, thumbEl));
+    item.addEventListener("touchstart", () => loadVideo(videoEl, state), { once: true, passive: true });
+  });
+
+  var observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      var data = videoMap.get(entry.target);
+      if (data) {
+        loadVideo(data.videoEl, data.state);
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: "200px" });
+
+  videoMap.forEach((_data, item) => observer.observe(item));
+
+  function loadVideo(videoEl, state) {
+    if (state.loaded || state.loading) return;
+    var sourceEl = videoEl.querySelector("source");
+    if (!(sourceEl && sourceEl.src) && !videoEl.currentSrc) return;
+    state.loading = true;
+
+    if (videoEl.readyState >= 2) {
+      state.loaded = true;
+      state.loading = false;
+      return;
+    }
+
+    videoEl.addEventListener("canplay", () => {
+      state.loaded = true;
+      state.loading = false;
+    }, { once: true });
+    videoEl.addEventListener("error", () => { state.loading = false; }, { once: true });
+
+    try { videoEl.load(); } catch (_) { state.loading = false; }
+  }
+
+  function playVideo(videoEl, thumbEl, state) {
+    if (!state.loaded && !state.loading) loadVideo(videoEl, state);
+
+    if (videoEl.readyState < 2 && !state.loaded) {
+      videoEl.addEventListener("canplay", () => tryPlay(videoEl, thumbEl), { once: true });
+      return;
+    }
+    tryPlay(videoEl, thumbEl);
+  }
+
+  function tryPlay(videoEl, thumbEl) {
+    var p = videoEl.play();
+    if (p !== undefined) {
+      p.then(() => {
+        videoEl.style.opacity = "1";
+        videoEl.classList.add("playing");
+        if (thumbEl) thumbEl.style.opacity = "0";
+      }).catch(() => {
+        if (thumbEl) thumbEl.style.opacity = "1";
+      });
+    }
+  }
+
+  function hideVideo(videoEl, thumbEl) {
+    videoEl.pause();
+    videoEl.currentTime = 0;
+    videoEl.style.opacity = "0";
+    videoEl.classList.remove("playing");
+    if (thumbEl) thumbEl.style.opacity = "1";
+  }
+});
+</script>

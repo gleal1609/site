@@ -1,0 +1,17 @@
+{
+  "name": "reverso-cms-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:remote": "wrangler dev --remote",
+    "deploy": "wrangler deploy",
+    "migrate:local": "wrangler d1 migrations apply reverso-db --local",
+    "migrate:remote": "wrangler d1 migrations apply reverso-db --remote",
+    "token:build": "node scripts/generate-build-token.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.81.1"
+  }
+}

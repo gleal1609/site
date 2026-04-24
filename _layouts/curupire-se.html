@@ -1,0 +1,51 @@
+---
+layout: none
+---
+
+<!DOCTYPE html>
+<html lang="pt-BR" class="curupire-se-root">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page.title }} | {{ site.title }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Poppins:wght@400;500&display=swap" rel="stylesheet" />
+
+  {% include header.html %}
+  
+  {% include opengraph.html %}
+
+  <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/css/bottom-nav.css' | relative_url }}">
+</head>
+<body class="curupire-se-body">
+  <div class="curupire-se-page">
+    <div class="form-container">
+      <h1 class="form-page-title">Curupire-se</h1>
+      <p class="form-page-subtitle">Trabalhe conosco</p>
+      
+      <div class="google-form-wrapper">
+        <div class="google-form-frame">
+          <iframe
+            src="https://docs.google.com/forms/d/e/1FAIpQLSflY53GLTLjQM6lCxmr43oPXz3m_j-25Q6HH50bpiXbOSGSag/viewform?embedded=true"
+            class="google-form-embed"
+            title="Formulário Trabalhe conosco — Reverso"
+            frameborder="0"
+            marginheight="0"
+            marginwidth="0"
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade">
+            Carregando…
+          </iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  {% include bottom-nav.html %}
+  
+  <!-- GSAP for bottom nav animations -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" crossorigin="anonymous"></script>
+  <script src="{{ '/assets/js/page-transitions.js' | relative_url }}"></script>
+  <script src="{{ '/assets/js/bottom-nav.js' | relative_url }}"></script>
+</body>
+</html>

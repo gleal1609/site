@@ -1,0 +1,330 @@
+/**
+ * Home: hero em vídeo full-screen, menu flip, filtro e área abaixo do fold
+ */
+
+/* ── Hero (100vh) ── */
+.home-hero {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.home-hero__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 1;
+  visibility: visible;
+}
+
+.home-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.2) 0%,
+    rgba(0, 0, 0, 0.1) 40%,
+    rgba(0, 0, 0, 0.45) 100%
+  );
+}
+
+/* Role para ver */
+.home-hero__scroll {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  text-align: center;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.home-hero__scroll--visible,
+.home-hero__scroll.home-hero__scroll--visible {
+  opacity: 1;
+}
+
+.home-hero__scroll-line {
+  font-family: "Poppins", "Montserrat", sans-serif;
+  font-size: clamp(0.7rem, 2.5vw, 0.85rem);
+  font-weight: 500;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  margin: 0 0 0.25rem;
+  display: block;
+  white-space: nowrap;
+}
+
+.home-hero__scroll-line .scroll-hint-char {
+  display: inline-block;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.home-hero__scroll-arrow {
+  display: block;
+  font-size: 1.25rem;
+  line-height: 1;
+  margin-top: 0.2rem;
+  animation: home-scroll-bob 1.6s ease-in-out infinite;
+}
+
+@keyframes home-scroll-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translateY(6px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-hero__scroll-arrow {
+    animation: none;
+  }
+}
+
+/* Conteúdo abaixo do hero (filtro + grid) */
+#home-below,
+.home-below {
+  position: relative;
+  z-index: 1;
+  background: #0d0d0d;
+  opacity: 0;
+  min-height: 40vh;
+  transition: opacity 0.5s ease;
+}
+
+.home-below--visible,
+#home-below.home-below--visible {
+  opacity: 1;
+}
+
+/* Filtro — mesma família que .servico-link (Sobre) */
+.home-filter {
+  padding: 2.5rem 1.25rem 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.home-filter__btn--active {
+  background-color: rgba(255, 0, 0, 0.2) !important;
+  border-color: #ff0000 !important;
+  box-shadow: 0 4px 12px rgba(255, 0, 0, 0.3);
+  transform: translateY(-2px);
+}
+
+.load-more-wrap {
+  display: flex;
+  justify-content: center;
+  /* Top spacing: the masonry grid is absolutely positioned, so we need
+     explicit room between the last tile row and the button. */
+  padding: clamp(2rem, 4vw, 3rem) 1rem clamp(3rem, 6vw, 4rem);
+  margin-top: 0;
+}
+
+.load-more-wrap[hidden] {
+  display: none !important;
+}
+
+.load-more-btn {
+  min-height: 44px;
+}
+
+/* Menu flip — canto superior direito
+   Variáveis: altura lógica do gatilho = à altura do .home-nav__trigger; o painel usa a mesma
+   conta no padding-top para nunca sobrepor o logo ao 1.º item (qualquer DPR / mobile / safe-area). */
+.home-nav {
+  --nav-tr-h: 5rem; /* 80px */
+  /* Espaço extra entre a base do logo e o 1.º link (não sobrepor o “R”) */
+  --nav-stack-gap: clamp(0.7rem, 2.2vmin, 1.1rem);
+  /* Margem mínima do logo às bordas (mais arestado = mais fácil o empilhamento) */
+  --nav-edge-t: max(1rem, env(safe-area-inset-top, 0px));
+  --nav-edge-r: max(0.9rem, env(safe-area-inset-right, 0px));
+  position: fixed;
+  z-index: 200;
+  top: 0;
+  right: 0;
+  padding: var(--nav-edge-t) var(--nav-edge-r) 0 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.home-nav__trigger,
+.home-nav__panel,
+.home-nav__backdrop {
+  pointer-events: auto;
+}
+
+.home-nav__trigger {
+  position: relative;
+  z-index: 202;
+  width: 64px;
+  height: 80px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  transform-style: preserve-3d;
+  transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));
+}
+
+.home-nav--open .home-nav__trigger {
+  transform: perspective(600px) rotateY(180deg);
+}
+
+.home-nav__logo {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 80px;
+  object-fit: contain;
+  backface-visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-nav__trigger {
+    transition: none;
+  }
+  .home-nav--open .home-nav__trigger {
+    transform: none;
+    opacity: 0.85;
+  }
+}
+
+.home-nav__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.home-nav__backdrop[hidden] {
+  display: none;
+}
+
+.home-nav__panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 201;
+  width: max-content;
+  min-width: 0;
+  max-width: min(17rem, calc(100vw - 0.5rem));
+  max-height: 100vh;
+  max-height: 100dvh;
+  background: rgba(10, 10, 10, 0.96);
+  border-left: 1px solid rgba(255, 0, 0, 0.2);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
+  /* Primeiro link começa *abaixo* do gatilho: mesmo offset vertical do .home-nav + altura + gap */
+  padding: calc(var(--nav-edge-t) + var(--nav-tr-h) + var(--nav-stack-gap))
+    var(--nav-edge-r) max(0.9rem, env(safe-area-inset-bottom, 0px)) 0.55rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: max(0.14rem, min(0.28rem, 1.1vmin));
+  transform: translateX(100%);
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+  overscroll-behavior: contain;
+}
+
+.home-nav--open .home-nav__panel {
+  transform: translateX(0);
+}
+
+/* Painel: links estilo coluna (alinhados à esquerda no painel) */
+.home-nav__link {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: max(2.5rem, 44px);
+  gap: 0.5rem;
+  padding: 0.4rem 0.35rem 0.4rem 0.15rem;
+  text-decoration: none;
+  color: #f0f0f0;
+  font-family: "Poppins", "Montserrat", sans-serif;
+  font-size: clamp(0.8rem, 0.7rem + 0.4vmin, 0.9rem);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  border-radius: 6px;
+  transition: background 0.2s, color 0.2s;
+  box-sizing: border-box;
+}
+
+.home-nav__link i {
+  width: 1rem;
+  text-align: center;
+  color: #ff3b2f;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.home-nav__link:hover,
+.home-nav__link:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+body.home-nav-open {
+  overflow: hidden;
+}
+
+.reverso-home-marker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+@media (max-width: 480px) {
+  .home-filter {
+    padding: 1.5rem 0.75rem 1rem;
+  }
+  .home-nav {
+    /* Gatilho mais baixo: manter a mesma variável = sem sobreposição no painel */
+    --nav-tr-h: 4.125rem; /* 66px */
+  }
+  .home-nav__trigger {
+    width: 52px;
+    height: 66px;
+  }
+  .home-nav__logo {
+    max-height: 66px;
+  }
+  .home-nav__panel {
+    max-width: min(16rem, calc(100vw - 0.35rem));
+  }
+}

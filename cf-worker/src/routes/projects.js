@@ -1,0 +1,424 @@
+import { json, error } from '../utils/response.js';
+import { logAudit } from '../utils/audit.js';
+import { SLUG_RE, SLUG_PATH_RE } from '../utils/slug.js';
+import {
+  ingestYoutubeThumbnailToR2,
+  isR2MediaKey,
+  isYoutubeHostedThumbnail,
+  youtubeVideoId,
+} from '../utils/youtube.js';
+
+const MAX_TITLE = 200;
+const MAX_BODY = 102400;
+const MAX_DESCRIPTION = 32000;
+/** URL absoluta (http/https) ou chave R2 sob MEDIA_BASE_URL. */
+function mediaPublicUrl(base, keyOrUrl) {
+  if (keyOrUrl == null || keyOrUrl === '') return null;
+  const s = String(keyOrUrl);
+  if (s.includes('://')) return s;
+  const b = (base || '').replace(/\/$/, '');
+  return b ? `${b}/${s}` : s;
+}
+
+/** Converte URL absoluta do CDN de mídia na chave guardada no D1. */
+function stripMediaBaseToKey(value, base) {
+  if (value == null || value === '' || !base) return value;
+  const s = String(value);
+  const b = String(base).replace(/\/$/, '');
+  if (s.startsWith(`${b}/`)) return s.slice(b.length + 1);
+  return value;
+}
+
+/** DB column → array; invalid JSON → [] + log (admin/export stay usable). */
+function parseServiceTypes(value) {
+  if (value == null || value === '') return [];
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.warn('[projects] invalid service_types JSON:', e.message);
+    return [];
+  }
+}
+
+function validate(data, isCreate) {
+  const errs = [];
+  if (isCreate && !data.title) errs.push('title is required');
+  if (isCreate && !data.slug) errs.push('slug is required');
+  if (data.slug && !SLUG_RE.test(data.slug)) errs.push('invalid slug format (use lowercase letters, digits, hyphens)');
+  if (data.title && data.title.length > MAX_TITLE) errs.push(`title max ${MAX_TITLE} chars`);
+  if (data.body_md && data.body_md.length > MAX_BODY) errs.push(`body_md max ${MAX_BODY / 1024}KB`);
+  if (data.description != null && String(data.description).length > MAX_DESCRIPTION) {
+    errs.push(`description max ${MAX_DESCRIPTION} chars`);
+  }
+  if (data.year !== undefined && data.year !== null && !Number.isInteger(data.year)) errs.push('year must be integer');
+  if (data.order !== undefined && data.order !== null && !Number.isInteger(data.order)) errs.push('order must be integer');
+  if (data.service_types !== undefined && data.service_types !== null && !Array.isArray(data.service_types)) {
+    errs.push('service_types must be an array');
+  }
+  for (const [key, val] of [
+    ['youtube_thumb_time_sec', data.youtube_thumb_time_sec],
+    ['youtube_preview_start_sec', data.youtube_preview_start_sec],
+  ]) {
+    if (val === undefined || val === null) continue;
+    if (typeof val === 'string' && val.trim() === '') continue;
+    const n = Number(val);
+    if (!Number.isFinite(n) || n < 0 || n > 6 * 3600) {
+      errs.push(`${key} must be a number between 0 and 6 hours`);
+    }
+  }
+  return errs;
+}
+
+export async function handleExport(env) {
+  // Todos os projetos — a Home passou a mostrar tudo (migration 0005
+  // removeu `show_on_home` e `published`).
+  const { results } = await env.DB.prepare(
+    `SELECT slug, title, body_md, description, thumbnail, hover_preview, service_types,
+            client, date_mmddyyyy, year, "order", home_size,
+            home_col, home_row,
+            youtube_url, pixieset_url,
+            youtube_thumb_time_sec, youtube_preview_start_sec
+     FROM projects
+     ORDER BY date_mmddyyyy DESC, year DESC, slug ASC`,
+  ).all();
+
+  const base = env.MEDIA_BASE_URL || '';
+  const projects = results.map(r => ({
+    ...r,
+    service_types: parseServiceTypes(r.service_types),
+    thumbnail: mediaPublicUrl(base, r.thumbnail),
+    hover_preview: mediaPublicUrl(base, r.hover_preview),
+    url: `/projects/${r.slug}/`,
+  }));
+
+  return json(projects);
+}
+
+export async function handleList(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, slug, title, thumbnail, hover_preview, service_types,
+            client, date_mmddyyyy, year, "order", home_size,
+            home_col, home_row,
+            youtube_url, pixieset_url, youtube_thumb_time_sec, youtube_preview_start_sec,
+            version, body_md, description,
+            created_at, updated_at
+     FROM projects ORDER BY date_mmddyyyy DESC, year DESC, slug ASC`,
+  ).all();
+
+  const base = env.MEDIA_BASE_URL || '';
+  const projects = results.map(r => ({
+    ...r,
+    service_types: parseServiceTypes(r.service_types),
+    thumbnail: mediaPublicUrl(base, r.thumbnail),
+    hover_preview: mediaPublicUrl(base, r.hover_preview),
+    url: `/projects/${r.slug}/`,
+  }));
+
+  return json(projects);
+}
+
+export async function handleGet(slug, env) {
+  if (!SLUG_PATH_RE.test(slug)) return error('Project not found', 404);
+
+  const row = await env.DB.prepare(
+    'SELECT * FROM projects WHERE slug = ?',
+  ).bind(slug).first();
+  if (!row) return error('Project not found', 404);
+
+  const base = env.MEDIA_BASE_URL || '';
+  return json({
+    ...row,
+    service_types: parseServiceTypes(row.service_types),
+    thumbnail: mediaPublicUrl(base, row.thumbnail),
+    hover_preview: mediaPublicUrl(base, row.hover_preview),
+  });
+}
+
+export async function handleCreate(request, env, ctx) {
+  const data = await request.json();
+  const errs = validate(data, true);
+  if (errs.length) return error(errs.join('; '), 400);
+
+  const existing = await env.DB.prepare(
+    'SELECT 1 FROM projects WHERE slug = ?',
+  ).bind(data.slug).first();
+  if (existing) return error('Slug already exists', 409);
+
+  let thumbnailVal = data.thumbnail || null;
+  if (!thumbnailVal && data.youtube_url) {
+    thumbnailVal = await ingestYoutubeThumbnailToR2(env, data.slug, data.youtube_url);
+  }
+  thumbnailVal = stripMediaBaseToKey(thumbnailVal, env.MEDIA_BASE_URL || '');
+  let hoverVal = data.hover_preview || null;
+  hoverVal = stripMediaBaseToKey(hoverVal, env.MEDIA_BASE_URL || '');
+
+  const svcJson = Array.isArray(data.service_types)
+    ? JSON.stringify(data.service_types)
+    : '[]';
+
+  const thumbT =
+    data.youtube_thumb_time_sec != null && data.youtube_thumb_time_sec !== ''
+      ? Number(data.youtube_thumb_time_sec)
+      : null;
+  const prevT =
+    data.youtube_preview_start_sec != null && data.youtube_preview_start_sec !== ''
+      ? Number(data.youtube_preview_start_sec)
+      : null;
+  const thumbSec = Number.isFinite(thumbT) ? thumbT : null;
+  const prevSec = Number.isFinite(prevT) ? prevT : null;
+
+  await env.DB.prepare(
+    `INSERT INTO projects (slug, title, body_md, description, thumbnail, hover_preview,
+      service_types, client, date_mmddyyyy, year, "order",
+      home_size, home_col, home_row, youtube_url, pixieset_url,
+      youtube_thumb_time_sec, youtube_preview_start_sec)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    data.slug, data.title, data.body_md || null,
+    data.description != null ? String(data.description) : null,
+    thumbnailVal, hoverVal,
+    svcJson, data.client || null, data.date_mmddyyyy || null,
+    data.year || null,
+    data.order || 0, data.home_size || '1x1',
+    Number.isInteger(data.home_col) ? data.home_col : null,
+    Number.isInteger(data.home_row) ? data.home_row : null,
+    data.youtube_url || null, data.pixieset_url || null,
+    thumbSec, prevSec,
+  ).run();
+
+  logAudit(ctx, env.DB, {
+    action: 'create', targetType: 'project', targetId: data.slug,
+    diff: { title: data.title },
+  });
+
+  // Todo save → deploy: a Home mostra todos os projetos após a migration
+  // 0005 (sem `published` / `show_on_home`).
+  return json(
+    { slug: data.slug, created: true, triggerDeploy: true },
+    201,
+  );
+}
+
+export async function handleUpdate(slug, request, env, ctx) {
+  const data = await request.json();
+  const errs = validate(data, false);
+  if (errs.length) return error(errs.join('; '), 400);
+
+  if (data.version === undefined) return error('version field required for updates', 400);
+
+  const existing = await env.DB.prepare(
+    'SELECT version, youtube_url, thumbnail FROM projects WHERE slug = ?',
+  ).bind(slug).first();
+  if (!existing) return error('Project not found', 404);
+
+  if (existing.version !== data.version) {
+    return error('Conflict: project was modified by another user. Reload and try again.', 409);
+  }
+
+  const nextYoutube =
+    data.youtube_url !== undefined ? data.youtube_url : existing.youtube_url;
+  const nextThumbInput =
+    data.thumbnail !== undefined ? data.thumbnail : existing.thumbnail;
+  const ytChanged =
+    data.youtube_url !== undefined &&
+    String(data.youtube_url || '') !== String(existing.youtube_url || '');
+
+  if (nextYoutube && youtubeVideoId(nextYoutube)) {
+    const vid = youtubeVideoId(nextYoutube);
+    const alreadyHasThisIngest =
+      typeof nextThumbInput === 'string' &&
+      nextThumbInput.includes(`thumb-yt-${vid}.jpg`);
+
+    let shouldIngest = false;
+    if (!nextThumbInput || isYoutubeHostedThumbnail(nextThumbInput)) {
+      shouldIngest = true;
+    } else if (ytChanged && !isR2MediaKey(nextThumbInput)) {
+      shouldIngest = true;
+    } else if (ytChanged && isR2MediaKey(nextThumbInput) && !alreadyHasThisIngest) {
+      shouldIngest = true;
+    }
+
+    if (shouldIngest && !alreadyHasThisIngest) {
+      const key = await ingestYoutubeThumbnailToR2(env, slug, nextYoutube);
+      if (key) data.thumbnail = key;
+    }
+  }
+
+  const mediaBase = env.MEDIA_BASE_URL || '';
+  if (data.thumbnail !== undefined) {
+    data.thumbnail = stripMediaBaseToKey(data.thumbnail, mediaBase);
+  }
+  if (data.hover_preview !== undefined) {
+    data.hover_preview = stripMediaBaseToKey(data.hover_preview, mediaBase);
+  }
+
+  for (const yk of ['youtube_thumb_time_sec', 'youtube_preview_start_sec']) {
+    if (data[yk] === undefined) continue;
+    if (data[yk] === null || data[yk] === '') {
+      data[yk] = null;
+      continue;
+    }
+    const n = Number(data[yk]);
+    data[yk] = Number.isFinite(n) ? n : null;
+  }
+
+  const fields = [];
+  const values = [];
+  const updatable = [
+    'title', 'body_md', 'description', 'thumbnail', 'hover_preview', 'client',
+    'date_mmddyyyy', 'year', 'order', 'home_size',
+    'home_col', 'home_row',
+    'youtube_url', 'pixieset_url', 'youtube_thumb_time_sec', 'youtube_preview_start_sec',
+  ];
+
+  for (const key of updatable) {
+    if (data[key] !== undefined) {
+      const val = data[key];
+      fields.push(key === 'order' ? '"order" = ?' : `${key} = ?`);
+      values.push(val);
+    }
+  }
+
+  if (data.service_types !== undefined) {
+    fields.push('service_types = ?');
+    values.push(JSON.stringify(Array.isArray(data.service_types) ? data.service_types : []));
+  }
+
+  fields.push('version = version + 1');
+  fields.push("updated_at = datetime('now')");
+
+  values.push(slug, data.version);
+
+  const result = await env.DB.prepare(
+    `UPDATE projects SET ${fields.join(', ')} WHERE slug = ? AND version = ?`,
+  ).bind(...values).run();
+
+  if (!result.meta.changes) {
+    return error('Conflict: version mismatch', 409);
+  }
+
+  // Qualquer save no admin gera novo build — a Home mostra todos os
+  // projetos (sem filtro `published`/`show_on_home` após a migration 0005).
+  logAudit(ctx, env.DB, {
+    action: 'update', targetType: 'project', targetId: slug,
+    diff: { fields: Object.keys(data).filter(k => k !== 'version') },
+  });
+
+  return json({ slug, updated: true, triggerDeploy: true });
+}
+
+export async function handleDelete(slug, env, ctx) {
+  const existing = await env.DB.prepare(
+    'SELECT 1 FROM projects WHERE slug = ?',
+  ).bind(slug).first();
+  if (!existing) return error('Project not found', 404);
+
+  await env.DB.prepare('DELETE FROM projects WHERE slug = ?').bind(slug).run();
+
+  try {
+    const prefix = `projects/${slug}/`;
+    const listed = await env.MEDIA.list({ prefix });
+    if (listed.objects.length > 0) {
+      await Promise.all(listed.objects.map(obj => env.MEDIA.delete(obj.key)));
+    }
+  } catch (e) {
+    console.error('R2 cleanup error:', e);
+  }
+
+  logAudit(ctx, env.DB, {
+    action: 'delete', targetType: 'project', targetId: slug,
+  });
+
+  return json({ slug, deleted: true, triggerDeploy: true });
+}
+
+/**
+ * Migração em massa: grava no R2 miniaturas ainda apontando para o CDN do YouTube.
+ * Autenticação: mesmo token de build do export (`Authorization: Bearer` + `CF_BUILD_TOKEN`).
+ * Não incrementa `version` (evita conflitos no admin). Disparar antes do próximo build Netlify
+ * ou após deploy do Worker.
+ */
+export async function handleBackfillYoutubeThumbnails(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT slug, youtube_url, thumbnail FROM projects
+     WHERE TRIM(COALESCE(youtube_url, '')) != ''
+       AND (
+         TRIM(COALESCE(thumbnail, '')) = ''
+         OR INSTR(COALESCE(thumbnail, ''), 'img.youtube.com') > 0
+         OR INSTR(COALESCE(thumbnail, ''), 'ytimg.com') > 0
+       )`,
+  ).all();
+
+  let ingested = 0;
+  const failed = [];
+  for (const row of results) {
+    const key = await ingestYoutubeThumbnailToR2(env, row.slug, row.youtube_url);
+    if (!key) {
+      failed.push({ slug: row.slug, reason: 'ingest_failed_or_blocked' });
+      continue;
+    }
+    await env.DB.prepare(
+      `UPDATE projects SET thumbnail = ?, updated_at = datetime('now') WHERE slug = ?`,
+    )
+      .bind(key, row.slug)
+      .run();
+    ingested++;
+  }
+
+  return json({
+    candidates: results.length,
+    ingested,
+    failed,
+  });
+}
+
+/**
+ * Atualiza só thumbnail + hover_preview no D1 (chaves R2), após upload feito fora do Worker
+ * (script local: yt-dlp + FFmpeg → R2). Auth: mesmo token de build do export.
+ */
+export async function handleMediaKeysSync(request, env, ctx) {
+  const data = await request.json().catch(() => ({}));
+  if (!data.slug || typeof data.slug !== 'string') return error('slug required', 400);
+  if (!SLUG_PATH_RE.test(data.slug)) return error('invalid slug', 400);
+  if (typeof data.thumbnail !== 'string' || !data.thumbnail.startsWith('projects/')) {
+    return error('thumbnail must be an R2 key starting with projects/', 400);
+  }
+  if (typeof data.hover_preview !== 'string' || !data.hover_preview.startsWith('projects/')) {
+    return error('hover_preview must be an R2 key starting with projects/', 400);
+  }
+
+  const row = await env.DB.prepare('SELECT slug FROM projects WHERE slug = ?')
+    .bind(data.slug)
+    .first();
+  if (!row) return error('Project not found', 404);
+
+  await env.DB.prepare(
+    `UPDATE projects SET thumbnail = ?, hover_preview = ?, updated_at = datetime('now'),
+     version = version + 1 WHERE slug = ?`,
+  )
+    .bind(data.thumbnail, data.hover_preview, data.slug)
+    .run();
+
+  logAudit(ctx, env.DB, {
+    action: 'media_keys_sync',
+    targetType: 'project',
+    targetId: data.slug,
+    diff: { thumbnail: data.thumbnail, hover_preview: data.hover_preview },
+  });
+
+  return json({ ok: true, slug: data.slug });
+}
+
+/** Lista slug + youtube_url para scripts locais (ingest em lote). Auth: token de build. */
+export async function handleYoutubeManifest(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT slug, youtube_url, youtube_thumb_time_sec, youtube_preview_start_sec
+     FROM projects
+     WHERE TRIM(COALESCE(youtube_url, '')) != ''
+     ORDER BY date_mmddyyyy DESC, year DESC, slug ASC`,
+  ).all();
+
+  return json({ projects: results });
+}

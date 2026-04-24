@@ -3,6 +3,12 @@ email: contato@reversofilmes.com.br
 description: Reverso Filmes | O Poder de ver o Mundo ao Contrário.
 baseurl: "" 
 url: "https://temp.reversofilmes.com.br"
+
+# Base URL do Worker (sem barra no fim). Admin usa isto na meta reverso-cms-api.
+# Local com wrangler dev: http://127.0.0.1:8787 — ou use _config.local.yml (gitignored).
+# Produção com custom domain: https://cms.reversofilmes.com.br
+reverso_cms_api: "https://reverso-cms-api.reverso-cms.workers.dev"
+
 twitter_username: reversofilmes
 twitter_creator: "@reversofilmes"
 
@@ -17,6 +23,20 @@ og_locale: pt_BR
 theme: minima
 plugins:
   - jekyll-feed
+
+# Collections
+collections:
+  projects:
+    output: true
+    permalink: /projects/:name/
+
+# Defaults
+defaults:
+  - scope:
+      path: ""
+      type: projects
+    values:
+      layout: project
 
 # Exclude from processing.
 # The following items will not be processed, by default.
@@ -37,3 +57,10 @@ plugins:
 #   - vendor/cache/
 #   - vendor/gems/
 #   - vendor/ruby/
+
+exclude:
+  - cf-worker
+  - scripts
+  - testsprite_tests
+  - DOCUMENTACAO.md
+  - MIGRACAO_CONTAS_CLIENTE.md

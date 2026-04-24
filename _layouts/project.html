@@ -1,0 +1,123 @@
+---
+layout: none
+---
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page.title }} | {{ site.title }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Poppins:wght@400;500&display=swap" rel="stylesheet" />
+
+  {% include header.html %}
+  
+  {% include opengraph.html %}
+
+  <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/css/bottom-nav.css' | relative_url }}">
+</head>
+<body>
+  <div class="project-detail-page">
+    <!-- Title -->
+    <header class="project-hero">
+      <h1 class="project-detail-title">{{ page.title }}</h1>
+      {% if page.client or page.year or page.service_types %}
+        <div class="project-meta">
+          {% if page.client %}
+            <span class="project-detail-client">{{ page.client }}</span>
+          {% endif %}
+          {% if page.year %}
+            <span class="project-year">{{ page.year }}</span>
+          {% endif %}
+          {% if page.service_types and page.service_types.size > 0 %}
+            <div class="project-service-types">
+              {% for service_type in page.service_types %}
+                <a href="{{ '/projetos/' | relative_url }}#service={{ service_type | url_encode }}" class="service-type-tag">{{ service_type }}</a>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+    </header>
+
+    {% if page.description and page.description != "" %}
+      <section class="project-description-section">
+        <div class="project-description-inner markdown-body">
+          {{ page.description | markdownify }}
+        </div>
+      </section>
+    {% endif %}
+
+    <!-- Thumbnail Image -->
+    {% if page.thumbnail %}
+      <section class="project-thumbnail-section">
+        {% assign _t = page.thumbnail | strip %}
+        <img 
+          src="{% if _t contains '://' %}{{ _t }}{% else %}{{ _t | relative_url }}{% endif %}" 
+          alt="{{ page.title }}"
+          class="project-thumbnail-image"
+          loading="eager"
+        />
+      </section>
+    {% endif %}
+
+    <!-- Content -->
+    <main class="project-content">
+      <!-- YouTube Video -->
+      {% if page.youtube_url %}
+        <section class="project-video-section">
+          <h2 class="section-title">Vídeo</h2>
+          <div class="video-container">
+            {% assign youtube_id = page.youtube_url | replace: 'https://www.youtube.com/watch?v=', '' | replace: 'https://youtube.com/watch?v=', '' | replace: 'https://youtu.be/', '' | replace: 'https://www.youtu.be/', '' | split: '&' | first %}
+            <iframe 
+              src="https://www.youtube.com/embed/{{ youtube_id }}?rel=0" 
+              frameborder="0" 
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+              allowfullscreen
+              class="youtube-embed"
+              loading="lazy"
+            ></iframe>
+          </div>
+        </section>
+      {% endif %}
+
+      <!-- PixieSet Gallery -->
+      {% if page.pixieset_url %}
+        <section class="project-gallery-section">
+          <h2 class="section-title">Galeria de Fotos</h2>
+          <div class="pixieset-wrapper">
+            <div class="pixieset-scrollable-container">
+              <iframe 
+                src="{{ page.pixieset_url }}" 
+                frameborder="0" 
+                allowfullscreen
+                class="pixieset-embed"
+                loading="lazy"
+              ></iframe>
+            </div>
+          </div>
+          <div class="pixieset-link-wrapper">
+            <a href="{{ page.pixieset_url }}" target="_blank" rel="noopener" class="pixieset-external-link">
+              <i class="fa-solid fa-external-link"></i> Abrir galeria completa em nova aba
+            </a>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if content != "" %}
+        <section class="project-body-section project-markdown-body">
+          {{ content }}
+        </section>
+      {% endif %}
+    </main>
+  </div>
+  
+  {% include bottom-nav.html %}
+  
+  <!-- GSAP for bottom nav animations -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" crossorigin="anonymous"></script>
+  <script src="{{ '/assets/js/page-transitions.js' | relative_url }}"></script>
+  <script src="{{ '/assets/js/bottom-nav.js' | relative_url }}"></script>
+</body>
+</html>
