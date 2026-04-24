@@ -81,7 +81,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --user --upgrade "yt-dlp>=2024.10.07"
+          # Versão recente tem correcções para o desafio "Sign in to confirm you're not a bot"
+          python3 -m pip install --user --upgrade "yt-dlp>=2025.01.01"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Show toolchain versions
@@ -96,6 +97,26 @@ jobs:
         working-directory: scripts
         run: npm ci --no-audit --no-fund
 
+      - name: Prepare YouTube cookies (opcional)
+        id: cookies
+        shell: bash
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${YOUTUBE_COOKIES:-}" ]]; then
+            mkdir -p "$RUNNER_TEMP/yt"
+            file="$RUNNER_TEMP/yt/cookies.txt"
+            printf '%s' "$YOUTUBE_COOKIES" > "$file"
+            chmod 600 "$file"
+            echo "file=$file" >> "$GITHUB_OUTPUT"
+            echo "YOUTUBE_COOKIES presente — yt-dlp vai tentar com --cookies se preciso."
+          else
+            echo "Sem YOUTUBE_COOKIES — yt-dlp vai usar só clientes alternativos (mweb, tv_embedded)."
+          fi
+
       - name: Ingest (yt-dlp → ffmpeg → R2 → D1)
         working-directory: ${{ github.workspace }}
+        env:
+          YT_DLP_COOKIES_FILE: ${{ steps.cookies.outputs.file }}
         run: node scripts/ingest-youtube-media.mjs --slug "${{ steps.slug.outputs.slug }}"

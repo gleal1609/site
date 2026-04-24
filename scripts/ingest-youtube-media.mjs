@@ -57,22 +57,67 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Faz download do vídeo do YouTube. Em runners de datacenter (ex.: GitHub Actions)
+ * o YouTube exige "Sign in to confirm you're not a bot". Estratégia:
+ *   1) Tenta clientes alternativos (`mweb`, `tv_embedded`) que muitas vezes passam
+ *      o desafio sem credenciais.
+ *   2) Se existir um ficheiro de cookies em `YT_DLP_COOKIES_FILE` (`cookies.txt`
+ *      formato Netscape), tenta também com `--cookies`.
+ *   3) Se tudo falhar, relança o último erro.
+ */
 async function downloadVideo(dir, url) {
   const out = join(dir, 'source.%(ext)s');
-  await execFileAsync(ytDlpBin(), [
+  const commonArgs = [
     '-f',
     'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
     '-o',
     out,
     '--no-playlist',
     '--no-warnings',
-    url,
-  ], { maxBuffer: 10 * 1024 * 1024 });
-  const { readdir } = await import('fs/promises');
-  const files = await readdir(dir);
-  const vid = files.find((f) => f.startsWith('source.') && f !== 'source.%(ext)s');
-  if (!vid) throw new Error('yt-dlp não produziu ficheiro source.*');
-  return join(dir, vid);
+    '--retries',
+    '3',
+    '--fragment-retries',
+    '3',
+  ];
+
+  const cookiesFile = (process.env.YT_DLP_COOKIES_FILE || '').trim();
+  const attempts = [
+    ['--extractor-args', 'youtube:player_client=mweb,tv_embedded'],
+    ['--extractor-args', 'youtube:player_client=android,web'],
+    [],
+  ];
+  if (cookiesFile) {
+    attempts.push(['--cookies', cookiesFile]);
+    attempts.push([
+      '--cookies',
+      cookiesFile,
+      '--extractor-args',
+      'youtube:player_client=mweb',
+    ]);
+  }
+
+  let lastErr = null;
+  for (const extra of attempts) {
+    try {
+      await execFileAsync(
+        ytDlpBin(),
+        [...commonArgs, ...extra, url],
+        { maxBuffer: 10 * 1024 * 1024 },
+      );
+      const { readdir } = await import('fs/promises');
+      const files = await readdir(dir);
+      const vid = files.find((f) => f.startsWith('source.') && f !== 'source.%(ext)s');
+      if (vid) return join(dir, vid);
+      throw new Error('yt-dlp não produziu ficheiro source.*');
+    } catch (e) {
+      lastErr = e;
+      const msg = (e && (e.stderr || e.message)) || String(e);
+      console.warn('[yt-dlp] tentativa falhou:', extra.join(' ') || '(default)');
+      console.warn('         ', String(msg).split('\n').slice(-2).join(' | '));
+    }
+  }
+  throw lastErr || new Error('yt-dlp: todas as tentativas falharam');
 }
 
 /** -ss antes de -i seria input seek; após -i o FFmpeg procura o instante. Semântica: instante aprox. em segundos. */
