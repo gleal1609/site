@@ -87,6 +87,14 @@
           Aleatorizar formatos
         </button>
         <button type="button"
+                x-show="view === 'projetos' && canUndoRandomHomeSizes"
+                class="btn btn-secondary"
+                @click="discardRandomizedHomeSizes()"
+                :disabled="publishing"
+                title="Repor tamanhos de grelha ao estado anterior à aleatorização (ainda em rascunho)">
+          Descartar formatos
+        </button>
+        <button type="button"
                 x-show="view === 'projetos'"
                 @click="newProject()" class="btn btn-accent">+ Novo Projeto</button>
         <div class="user-info" x-show="user">
@@ -105,11 +113,11 @@
             <h2 class="projetos-title">Masonry da Home</h2>
             <p class="projetos-hint">
               Prévia 1-para-1 da grade exibida na Home do site. Todos os
-              projetos cadastrados aparecem aqui. Clique em «Aleatorizar
-              formatos» para experimentar uma nova distribuição de
-              tamanhos (a ordem cronológica dos projetos é preservada).
-              As mudanças ficam em rascunho até «Publicar». Clique em um
-              card para editar o projeto.
+              projetos cadastrados aparecem aqui. «Aleatorizar formatos»
+              gera uma nova distribuição de tamanhos (a ordem cronológica
+              é preservada); «Descartar formatos» repõe ao estado anterior
+              a essa aleatorização. As mudanças ficam em rascunho até
+              «Publicar». Clique num card para editar o projeto.
             </p>
           </div>
         </div>
@@ -328,8 +336,9 @@
             <div class="field-col">
               <label class="field-label">Vídeo preview (hover)</label>
               <div class="upload-area">
-                <video x-show="videoPreview" :src="videoPreview"
-                       class="upload-preview" muted controls></video>
+                <video x-show="videoPreview || form.hover_preview"
+                       :src="videoPreview || form.hover_preview"
+                       class="upload-preview" muted controls playsinline></video>
                 <input type="file" accept="video/mp4,video/webm"
                        @change="onVideoChange($event)"
                        class="file-input" id="video-input" />

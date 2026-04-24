@@ -128,6 +128,13 @@ function adminApp() {
     /** @type {Record<string, { payload: object, thumbFile: File|null, videoFile: File|null, isNew: boolean, version?: number }>} */
     projectDrafts: {},
 
+    /**
+     * Mapa `slug` → `home_size` a repor com «Descartar formatos» (estado antes da
+     * primeira aleatorização após carga / última publicação).
+     * @type {Record<string, string> | null}
+     */
+    _homeSizeRandomizeSnapshot: null,
+
     editorOpen: false,
     editorLoading: false,
     editSlug: null,
@@ -257,6 +264,7 @@ function adminApp() {
       this.projects = [];
       this.baselineProjects = [];
       this.projectDrafts = {};
+      this._homeSizeRandomizeSnapshot = null;
       this.editorOpen = false;
       this._clearSiteDraftPreview();
       this.siteDraft = null;
@@ -337,6 +345,11 @@ function adminApp() {
 
     hasDraftFor(slug) {
       return !!this.projectDrafts[slug];
+    },
+
+    get canUndoRandomHomeSizes() {
+      const s = this._homeSizeRandomizeSnapshot;
+      return s != null && Object.keys(s).length > 0;
     },
 
     async _loadSiteSettings() {
@@ -446,6 +459,13 @@ function adminApp() {
         this._toast('Nenhum projeto para aleatorizar.', 'warning');
         return;
       }
+      if (!this._homeSizeRandomizeSnapshot) {
+        const snap = {};
+        for (const p of targets) {
+          snap[p._slug] = p.home_size || '1x1';
+        }
+        this._homeSizeRandomizeSnapshot = snap;
+      }
       const pool = buildBalancedSizePool(targets.length);
       targets.forEach((p, i) => {
         const size = pool[i] || '1x1';
@@ -472,6 +492,28 @@ function adminApp() {
         `Formatos aleatorizados para ${targets.length} projeto(s). Publique para salvar no servidor.`,
         'success',
       );
+    },
+
+    /**
+     * Repõe `home_size` na grade e em `projectDrafts[*].payload` ao estado
+     * anterior à **primeira** «Aleatorizar formatos» desta sequência.
+     */
+    discardRandomizedHomeSizes() {
+      const snap = this._homeSizeRandomizeSnapshot;
+      if (!snap || !Object.keys(snap).length) {
+        this._toast('Nada para reverter.', 'warning');
+        return;
+      }
+      for (const p of this.projects) {
+        if (!Object.prototype.hasOwnProperty.call(snap, p._slug)) continue;
+        const h = snap[p._slug];
+        p.home_size = h;
+        const d = this.projectDrafts[p._slug];
+        if (d) d.payload.home_size = h;
+      }
+      this._homeSizeRandomizeSnapshot = null;
+      this.$nextTick(() => this._relayoutMasonry());
+      this._toast('Tamanhos de grelha repostos. As alterações continuam em rascunho até «Publicar».', 'success');
     },
 
     _numOrNull(v) {
@@ -854,6 +896,7 @@ function adminApp() {
 
         await this._loadProjects({ silent: true });
         if (siteDraft) await this._loadSiteSettings();
+        this._homeSizeRandomizeSnapshot = null;
         this.closeEditor();
         if (this.view === 'projetos') {
           this.$nextTick(() => this._relayoutMasonry());
