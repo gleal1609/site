@@ -412,9 +412,14 @@
                     @click="generatePixiesetFromLink('both')">Gerar capa e vídeo</button>
           </div>
 
+          <p class="field-hint" style="margin:0.75rem 0 0.5rem; font-size:0.8rem; color:var(--text-2); line-height:1.45">
+            «Salvar» grava o rascunho neste browser e <strong>fecha o editor</strong>. O site só muda após
+            <strong>«Publicar»</strong> (envio ao servidor e deploy).
+          </p>
           <div class="editor-actions">
             <button type="button" @click="saveProject()" :disabled="publishing"
-                    class="btn btn-primary btn-lg" style="flex:1">
+                    class="btn btn-primary btn-lg" style="flex:1"
+                    title="Guarda o rascunho e fecha o editor. Depois use Publicar.">
               Salvar
             </button>
             <button type="button" @click="discardEditorDraft()" :disabled="publishing"

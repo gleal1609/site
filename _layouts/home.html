@@ -17,11 +17,10 @@ layout: none
 {% endfor %}
 {% assign sorted_services = service_types_set | sort %}
 {% assign _ss = site.data['site-settings'] %}
-{% assign default_hero = '/assets/videos/Cópia de PORTFOLIO REVERSO FILMES 2025.mp4' %}
+{% comment %}Só exibe vídeo se o build tiver trazido URL a partir do D1 (fetch-projects). Sem fallback local — evita 404 no Netlify.{% endcomment %}
+{% assign hero_src = "" %}
 {% if _ss and _ss.hero_video and _ss.hero_video != '' %}
   {% assign hero_src = _ss.hero_video %}
-{% else %}
-  {% assign hero_src = default_hero %}
 {% endif %}
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -45,6 +44,7 @@ layout: none
   {% include home-nav.html %}
 
   <div class="home-hero" id="home-hero">
+    {% if hero_src %}
     <video
       class="home-hero__video"
       id="home-hero-video"
@@ -61,6 +61,7 @@ layout: none
         type="{% if hero_src contains '.webm' %}video/webm{% else %}video/mp4{% endif %}"
       />
     </video>
+    {% endif %}
 
     <div class="intro-text-container" id="intro-text">
       <h1 class="intro-text">

@@ -410,12 +410,16 @@ function adminApp() {
       return (
         this.hasStagedProjects ||
         this.hasStagedSite ||
-        (this.editorOpen && this.formDirty)
+        (this.editorOpen && (this.formDirty || this.thumbFile || this.videoFile))
       );
     },
 
     get canPublish() {
-      return this.hasStagedProjects || this.hasStagedSite;
+      return (
+        this.hasStagedProjects ||
+        this.hasStagedSite ||
+        (this.editorOpen && (this.formDirty || this.thumbFile || this.videoFile))
+      );
     },
 
     get unpublishedSummary() {
@@ -427,7 +431,9 @@ function adminApp() {
       if (this.hasStagedSite) {
         parts.push('vídeo da Hero em rascunho');
       }
-      if (this.editorOpen && this.formDirty) parts.push('formulário em edição');
+      if (this.editorOpen && (this.formDirty || this.thumbFile || this.videoFile)) {
+        parts.push('formulário em edição');
+      }
       return parts.length ? parts.join(' · ') : '';
     },
 
@@ -724,10 +730,19 @@ function adminApp() {
       return { payload, slugForUploads };
     },
 
-    saveProject() {
+    /**
+     * Inclui o projecto aberto no rascunho de publicação (payload + ficheiros locais
+     * de miniatura / vídeo, ex. gerados pelo Pixieset). Sem isto, «Publicar» só
+     * enviava a Hero se o utilizador nunca tivesse clicado em «Salvar».
+     * @param {{ silent?: boolean }} opts — se silent, não mostra toast nem fecha o editor
+     *   (usado antes de «Publicar»).
+     * @returns {boolean}
+     */
+    saveProject(opts = {}) {
+      const silent = opts.silent === true;
       if (!this.form.title) {
         this._toast('Título é obrigatório', 'error');
-        return;
+        return false;
       }
 
       const slug = this.isNew ? this._makeSlug() : this.form._slug;
@@ -755,24 +770,42 @@ function adminApp() {
 
       this.formDirty = false;
       this._persistYouTubeTimeDraft();
-      this._toast('Alterações incluídas na publicação pendente.', 'success');
-
-      if (this.view === 'projetos') {
+      if (!silent) {
+        this._toast(
+          'Rascunho guardado. Clique em «Publicar» (topo) para enviar ao servidor e atualizar o site.',
+          'success',
+        );
+        this.$nextTick(() => {
+          this.closeEditor();
+          if (this.view === 'projetos') {
+            this.$nextTick(() => this._relayoutMasonry());
+          }
+        });
+      } else if (this.view === 'projetos') {
         this.$nextTick(() => this._relayoutMasonry());
       }
+      return true;
     },
 
     async publishAll() {
       if (!this.canPublish || !this._api) return;
 
-      const createDraft = this.projectDrafts[DRAFT_NEW];
-      const updateKeys = Object.keys(this.projectDrafts).filter((k) => k !== DRAFT_NEW);
-      const siteDraft = this.siteDraft;
-
       this.publishing = true;
       this.publishPhase = 'Preparando…';
 
       try {
+        if (this.editorOpen && (this.formDirty || this.thumbFile || this.videoFile)) {
+          if (!this.saveProject({ silent: true })) {
+            this.publishing = false;
+            this.publishPhase = '';
+            return;
+          }
+        }
+
+        const createDraft = this.projectDrafts[DRAFT_NEW];
+        const updateKeys = Object.keys(this.projectDrafts).filter((k) => k !== DRAFT_NEW);
+        const siteDraft = this.siteDraft;
+
         if (createDraft) {
           this.publishPhase = 'Criando novo projeto…';
           const slug = this._makeSlugFromPayload(createDraft.payload);
@@ -882,6 +915,7 @@ function adminApp() {
         MediaUpload.validate(file, MediaUpload.IMG_TYPES);
         this.thumbFile = file;
         this.thumbPreview = MediaUpload.preview(file);
+        this.formDirty = true;
       } catch (err) {
         this._toast(err.message, 'error');
       }
@@ -894,6 +928,7 @@ function adminApp() {
         MediaUpload.validate(file, MediaUpload.VID_TYPES);
         this.videoFile = file;
         this.videoPreview = MediaUpload.preview(file);
+        this.formDirty = true;
       } catch (err) {
         this._toast(err.message, 'error');
       }

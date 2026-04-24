@@ -86,6 +86,11 @@ async function main() {
     }
   } else {
     console.warn('[fetch-projects] WARNING: All project export attempts failed.');
+    if (siteSettings && typeof siteSettings === 'object') {
+      console.error(
+        '[fetch-projects] Atenção: o export de site-settings respondeu, mas o de projetos falhou — o build pode mostrar a Hero atualizada e a grelha de projetos (miniaturas / vídeos) desatualizada. Verifique o token (CF_BUILD_TOKEN) e o log acima.',
+      );
+    }
     if (CACHE_PATH && existsSync(CACHE_PATH)) {
       console.warn(`[fetch-projects] Using cached ${CACHE_PATH}`);
       copyFileSync(CACHE_PATH, OUTPUT_PROJECTS);
