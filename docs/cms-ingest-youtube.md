@@ -137,6 +137,40 @@ curl -i -X OPTIONS https://reverso-cms-api.reverso-cms.workers.dev/api/projects/
 6. Quando terminar com sucesso, **reabre o projecto no editor** ou recarrega a lista: `thumbnail` e vídeo de hover já mostram os novos URLs de `projects/<slug>/yt-poster.jpg` e `projects/<slug>/hover-5s.mp4`.
 7. Clica em **Publicar** só se quiseres forçar um novo deploy Netlify (o Worker já gravou em D1; o próximo deploy Netlify — agendado, manual ou por outro save — traz os novos valores para o site estático).
 
+## Bot-check do YouTube («Sign in to confirm you're not a bot»)
+
+Os IPs dos runners públicos do GitHub Actions vivem em blocos de datacenter da Azure e o YouTube bloqueia-os frequentemente com esse aviso. O script tenta automaticamente, por esta ordem, até conseguir:
+
+1. `--extractor-args "youtube:player_client=mweb,tv_embedded"`
+2. `--extractor-args "youtube:player_client=android,web"`
+3. Sem argumentos extra.
+4. *(se houver secret `YOUTUBE_COOKIES`)* `--cookies <ficheiro>`.
+5. *(com cookies)* `--cookies <ficheiro> --extractor-args youtube:player_client=mweb`.
+
+Na maioria dos vídeos o passo 1 ou 2 já passa. Para vídeos mais sensíveis ou para garantir robustez:
+
+### Criar a secret `YOUTUBE_COOKIES`
+
+1. No Chrome/Edge/Firefox instala uma extensão que exporta cookies em formato **Netscape**. Duas fiáveis:
+   - Firefox: «*cookies.txt*» (<https://addons.mozilla.org/firefox/addon/cookies-txt/>).
+   - Chromium: «*Get cookies.txt LOCALLY*» (<https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc>).
+2. Vai a <https://www.youtube.com>, inicia sessão numa **conta dedicada** (nunca uses a tua principal: cookies expostos ≈ login partilhado; o YouTube também pode flaggar contas que abrem sessão a partir de IPs de datacenter). Podes criar uma conta Google nova com 2FA e usá-la só para isto.
+3. Na página do YouTube, clica na extensão → **Export → cookies.txt**.
+4. Abre o ficheiro exportado num editor de texto; vais ter algo como:
+   ```
+   # Netscape HTTP Cookie File
+   .youtube.com  TRUE  /  TRUE  1782912312  CONSENT  YES+...
+   .youtube.com  TRUE  /  TRUE  1782912312  LOGIN_INFO  AFmmF2sw...
+   ...
+   ```
+5. **Settings → Secrets and variables → Actions → New repository secret**:
+   - Name: `YOUTUBE_COOKIES`
+   - Value: cola **o conteúdo completo** do ficheiro (inclui a primeira linha `# Netscape HTTP Cookie File`).
+
+O workflow detecta automaticamente a secret e escreve-a em `$RUNNER_TEMP/yt/cookies.txt` com permissões restritas; só é usada por esse job e é descartada no final.
+
+> **Rotação**: cookies do YouTube expiram tipicamente entre 2 e 6 meses, ou antes se fizeres logout/mudares de password. Se os ingests começarem a falhar novamente com o mesmo erro, exporta novos cookies e actualiza a secret.
+
 ## Como corrigir se algo falhar
 
 - **GitHub Actions tab → execução falha em «Check secrets»** → falta algum secret no repo (lista no passo 3).
