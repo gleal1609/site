@@ -8,7 +8,7 @@ layout: none
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{ page.title }} | {{ site.title }}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Poppins:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Poppins:wght@400;500;900&display=swap" rel="stylesheet" />
 
   {% include header.html %}
   
@@ -16,6 +16,7 @@ layout: none
 
   <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
   <link rel="stylesheet" href="{{ '/assets/css/bottom-nav.css' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/css/site-footer.css' | relative_url }}">
   
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js" crossorigin="anonymous"></script>
@@ -155,6 +156,8 @@ layout: none
       <p>Nenhum projeto encontrado com os filtros selecionados.</p>
     </div>
   </div>
+
+  {% include site-footer.html %}
 
   {% include bottom-nav.html %}
   

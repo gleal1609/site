@@ -37,6 +37,7 @@ layout: none
   <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
   <link rel="stylesheet" href="{{ '/assets/css/bottom-nav.css' | relative_url }}">
   <link rel="stylesheet" href="{{ '/assets/css/home-hero.css' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/css/site-footer.css' | relative_url }}">
   <link rel="preload" href="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" as="script" crossorigin>
   <link rel="preload" href="https://cdn.jsdelivr.net/npm/packery@2.1.2/dist/packery.pkgd.min.js" as="script" crossorigin>
 </head>
@@ -83,11 +84,23 @@ layout: none
 
   <div class="home-below" id="home-below">
     <section class="home-filter" id="home-filter" aria-label="Filtrar por serviço">
-      <div class="home-filter__inner servicos-list">
-        <button type="button" class="servico-link home-filter__btn home-filter__btn--active" data-service="__all__">TODOS</button>
-        {% for service_type in sorted_services %}
-          <button type="button" class="servico-link home-filter__btn" data-service="{{ service_type | replace: '"', '' }}">{{ service_type }}</button>
-        {% endfor %}
+      <div class="home-filter__track">
+        <div
+          class="home-filter__scroll"
+          id="home-filter-scroll"
+          role="group"
+          aria-label="Tipos de serviço"
+        >
+          <div class="home-filter__inner servicos-list">
+            <button type="button" class="servico-link home-filter__btn home-filter__btn--active" data-service="__all__">TODOS</button>
+            {% for service_type in sorted_services %}
+              <button type="button" class="servico-link home-filter__btn" data-service="{{ service_type | replace: '"', '' }}">{{ service_type }}</button>
+            {% endfor %}
+          </div>
+        </div>
+        <span class="home-filter__scroll-hint" aria-hidden="true">
+          <i class="fa-solid fa-chevron-right"></i>
+        </span>
       </div>
     </section>
 
@@ -97,6 +110,8 @@ layout: none
       <button type="button" class="servico-link load-more-btn" id="load-more-btn">Carregar mais</button>
     </div>
   </div>
+
+  {% include site-footer.html %}
 
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/packery@2.1.2/dist/packery.pkgd.min.js" crossorigin="anonymous"></script>
