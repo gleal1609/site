@@ -21,6 +21,14 @@
     e.preventDefault();
     const service = btn.getAttribute('data-service') || '__all__';
     setActive(service);
+    const sc = document.getElementById('home-filter-scroll');
+    if (sc && typeof btn.scrollIntoView === 'function') {
+      try {
+        btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+      } catch (_) {
+        btn.scrollIntoView();
+      }
+    }
     if (window.HomeMasonry && typeof window.HomeMasonry.setFilter === 'function') {
       window.HomeMasonry.setFilter(service);
     }
