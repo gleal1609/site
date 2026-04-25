@@ -70,6 +70,7 @@ async function importProject(data, body, slug) {
     year: data.year || null,
     order: data.order || 0,
     home_size: data.home_size ? String(data.home_size) : '1x1',
+    show_on_home: data.show_on_home ? 1 : 0,
     youtube_url: data.youtube_url || null,
     pixieset_url: data.pixieset_url || null,
   };

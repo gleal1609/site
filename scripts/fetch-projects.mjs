@@ -1,6 +1,6 @@
 /**
  * Build-time: fetch all projects + site settings from Worker → _data/*.json
- * (A migration 0005 removeu `published` / `show_on_home`: a Home mostra tudo.)
+ * O export inclui `show_on_home` (grelha da Home filtra no Jekyll).
  */
 import { writeFileSync, mkdirSync, copyFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';

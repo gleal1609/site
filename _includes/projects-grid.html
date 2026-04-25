@@ -4,56 +4,50 @@
   {% assign all_projects = site.projects %}
 {% endif %}
 {% comment %}
-  A Home mostra TODOS os projetos (migration 0005 removeu `show_on_home` e
-  `published`). Ordenação: data (mais recente primeiro), alinhado ao export D1.
+  Home: show_on_home; 5 colunas. D1: home_col 1–5 (esq.→dir.); índice coluna = home_col - 1.
+  Legado 0–4: trata-se como índice. Inválido ou vazio: round-robin por "order".
 {% endcomment %}
-{% assign sorted_projects = all_projects | sort: "date_mmddyyyy" | reverse %}
-{% comment %} Total projects to display: {{ sorted_projects.size }} {% endcomment %}
+{% assign home_candidates = all_projects | where_exp: "p", "p.show_on_home == true or p.show_on_home == 1" %}
+{% assign sorted_projects = home_candidates | sort: "order" %}
+{% assign col0 = "" | split: "" %}
+{% assign col1 = "" | split: "" %}
+{% assign col2 = "" | split: "" %}
+{% assign col3 = "" | split: "" %}
+{% assign col4 = "" | split: "" %}
+{% for p in sorted_projects %}
+  {% assign i = forloop.index0 %}
+  {% if p.home_col == nil or p.home_col == "" %}
+    {% assign eff = i | modulo: 5 %}
+  {% else %}
+    {% assign hc = p.home_col | plus: 0 %}
+    {% if hc >= 1 and hc <= 5 %}
+      {% assign eff = hc | minus: 1 %}
+    {% elsif hc >= 0 and hc <= 4 %}
+      {% assign eff = hc %}
+    {% else %}
+      {% assign eff = i | modulo: 5 %}
+    {% endif %}
+  {% endif %}
+  {% if eff == 0 %}{% assign col0 = col0 | push: p %}
+  {% elsif eff == 1 %}{% assign col1 = col1 | push: p %}
+  {% elsif eff == 2 %}{% assign col2 = col2 | push: p %}
+  {% elsif eff == 3 %}{% assign col3 = col3 | push: p %}
+  {% else %}{% assign col4 = col4 | push: p %}
+  {% endif %}
+{% endfor %}
+{% assign col0 = col0 | sort: "order" %}
+{% assign col1 = col1 | sort: "order" %}
+{% assign col2 = col2 | sort: "order" %}
+{% assign col3 = col3 | sort: "order" %}
+{% assign col4 = col4 | sort: "order" %}
+{% comment %} Total: {{ sorted_projects.size }} {% endcomment %}
 <div id="masonry-container" class="masonry-container">
-  <div class="projects-grid" data-total-projects="{{ sorted_projects.size }}">
-    {% for project in sorted_projects %}
-      {% if project.url %}
-        {% assign proj_url = project.url %}
-      {% else %}
-        {% assign proj_url = project.slug | prepend: "/projects/" | append: "/" %}
-      {% endif %}
-      {% if project.service_types %}{% capture _svcjson %}{{ project.service_types | jsonify }}{% endcapture %}{% else %}{% assign _svcjson = '[]' %}{% endif %}
-      <a href="{{ proj_url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-services="{{ _svcjson | replace: '"', '&quot;' }}">
-      <div class="project-thumbnail-container">
-        {% assign _thumb = project.thumbnail | strip %}
-        {% assign _hover = project.hover_preview | strip %}
-        {% if project.hover_preview %}
-          <video 
-            class="project-hover-video" 
-            muted 
-            playsinline 
-            loop 
-            preload="metadata"
-            poster="{% if _thumb contains '://' %}{{ _thumb }}{% else %}{{ _thumb | relative_url }}{% endif %}"
-            webkit-playsinline="true">
-            {% assign _hp = project.hover_preview | downcase %}
-            {% if _hp contains '.webm' %}
-              <source src="{% if _hover contains '://' %}{{ _hover }}{% else %}{{ _hover | relative_url }}{% endif %}" type="video/webm">
-            {% else %}
-              <source src="{% if _hover contains '://' %}{{ _hover }}{% else %}{{ _hover | relative_url }}{% endif %}" type="video/mp4">
-            {% endif %}
-          </video>
-        {% endif %}
-        <img 
-          src="{% if _thumb contains '://' %}{{ _thumb }}{% else %}{{ _thumb | relative_url }}{% endif %}" 
-          alt="{{ project.title }}"
-          class="project-thumbnail"
-          loading="lazy"
-        />
-      </div>
-      <div class="project-overlay">
-        <h3 class="project-title">{{ project.title }}</h3>
-        {% if project.client %}
-          <p class="project-client">{{ project.client }}</p>
-        {% endif %}
-      </div>
-      </a>
-    {% endfor %}
+  <div class="projects-grid projects-grid--cols" data-total-projects="{{ sorted_projects.size }}">
+    <div class="projects-col" data-col="0" role="list">{% for project in col0 %}{% include home-project-item.html project=project dcol=0 %}{% endfor %}</div>
+    <div class="projects-col" data-col="1" role="list">{% for project in col1 %}{% include home-project-item.html project=project dcol=1 %}{% endfor %}</div>
+    <div class="projects-col" data-col="2" role="list">{% for project in col2 %}{% include home-project-item.html project=project dcol=2 %}{% endfor %}</div>
+    <div class="projects-col" data-col="3" role="list">{% for project in col3 %}{% include home-project-item.html project=project dcol=3 %}{% endfor %}</div>
+    <div class="projects-col" data-col="4" role="list">{% for project in col4 %}{% include home-project-item.html project=project dcol=4 %}{% endfor %}</div>
   </div>
 </div>
 

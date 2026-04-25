@@ -463,6 +463,8 @@ a:hover::after {
   overflow-x: hidden;
   box-sizing: border-box;
   pointer-events: none;
+  /* Margem lateral = GUTTER (14) em masonry-init.js; respiro antes do rodapé */
+  padding: 0 14px clamp(3.5rem, 8vw, 6.5rem);
 }
 
 .masonry-container.grid-enabled {
@@ -479,15 +481,35 @@ a:hover::after {
   pointer-events: auto;
 }
 
+/* 5 colunas empilhadas (sem Packery) — vãos inexistentes; gap = espaçamento H/V */
+.projects-grid--cols {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: start;
+  gap: 14px;
+  min-height: 0;
+}
+
+.projects-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  width: 100%;
+}
+
 .project-item {
-  position: absolute;
+  position: relative;
   display: block;
-  /* Width will be set by JavaScript based on data-size */
+  flex: 0 0 auto;
+  width: 100%;
+  /* altura/ largura afinadas em JS para data-size */
   overflow: hidden;
   text-decoration: none;
   color: inherit;
   background-color: #000;
-  border: 2px solid #000;
+  border: 0;
+  border-radius: 10px;
   opacity: 1;
   cursor: pointer;
   transition: transform 0.3s ease;
@@ -502,7 +524,7 @@ a:hover::after {
 .project-item:focus {
   transform: scale(1.02);
   z-index: 5;
-  border-color: rgba(255, 0, 0, 0.3);
+  box-shadow: 0 0 0 1px rgba(255, 0, 0, 0.3);
 }
 
 .project-item:focus {
@@ -533,14 +555,12 @@ a:hover::after {
   background-color: #000;
 }
 
-/* Blocos mais “largos” que altos: favorecer a faixa central (comum em capas de Shorts 16:9). */
-.project-item[data-size="1x1"] .project-thumbnail,
-.project-item[data-size="2x1"] .project-thumbnail,
-.project-item[data-size="2x2"] .project-thumbnail {
+.project-item[data-size="1x1"] .project-thumbnail {
   object-position: center 22%;
 }
-
-.project-item[data-size="1x2"] .project-thumbnail {
+.project-item[data-size="1x1.5"] .project-thumbnail,
+.project-item[data-size="1x2"] .project-thumbnail,
+.project-item[data-size="1x3"] .project-thumbnail {
   object-position: center center;
 }
 
@@ -559,13 +579,12 @@ a:hover::after {
   background-color: #000;
 }
 
-.project-item[data-size="1x1"] .project-hover-video,
-.project-item[data-size="2x1"] .project-hover-video,
-.project-item[data-size="2x2"] .project-hover-video {
+.project-item[data-size="1x1"] .project-hover-video {
   object-position: center 22%;
 }
-
-.project-item[data-size="1x2"] .project-hover-video {
+.project-item[data-size="1x1.5"] .project-hover-video,
+.project-item[data-size="1x2"] .project-hover-video,
+.project-item[data-size="1x3"] .project-hover-video {
   object-position: center center;
 }
 

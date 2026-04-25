@@ -42,6 +42,24 @@ function parseServiceTypes(value) {
   }
 }
 
+const ALLOWED_HOME_SIZES = new Set(['1x1', '1x1.5', '1x2']);
+
+/** Largura×altura (células); grelha 5 col: 1x1, 1x1.5, 1x2; 1x3 legado → 1x1.5. */
+function normalizeHomeSize(s) {
+  if (s == null || s === '') return '1x1';
+  const t = String(s).toLowerCase().replace(/\s/g, '');
+  if (t === '1x3') return '1x1.5';
+  if (ALLOWED_HOME_SIZES.has(t)) return t;
+  if (t === '2x1') return '1x1';
+  if (t === '2x2') return '1x2';
+  return '1x1';
+}
+
+function normalizeShowOnHomeDb(v) {
+  if (v === true || v === 1 || v === '1') return 1;
+  return 0;
+}
+
 function validate(data, isCreate) {
   const errs = [];
   if (isCreate && !data.title) errs.push('title is required');
@@ -68,15 +86,26 @@ function validate(data, isCreate) {
       errs.push(`${key} must be a number between 0 and 6 hours`);
     }
   }
+  if (data.show_on_home !== undefined && data.show_on_home !== null) {
+    const t = data.show_on_home;
+    if (t !== 0 && t !== 1 && t !== true && t !== false && t !== '0' && t !== '1') {
+      errs.push('show_on_home must be boolean or 0/1');
+    }
+  }
+  if (data.home_col !== undefined && data.home_col !== null && data.home_col !== '') {
+    const hc = Number(data.home_col);
+    if (!Number.isInteger(hc) || hc < 1 || hc > 5) {
+      errs.push('home_col must be an integer 1–5');
+    }
+  }
   return errs;
 }
 
 export async function handleExport(env) {
-  // Todos os projetos — a Home passou a mostrar tudo (migration 0005
-  // removeu `show_on_home` e `published`).
+  // Build Jekyll: inclui `show_on_home` para a Home filtrar e ordenar.
   const { results } = await env.DB.prepare(
     `SELECT slug, title, body_md, description, thumbnail, hover_preview, service_types,
-            client, date_mmddyyyy, year, "order", home_size,
+            client, date_mmddyyyy, year, "order", home_size, show_on_home,
             home_col, home_row,
             youtube_url, pixieset_url,
             youtube_thumb_time_sec, youtube_preview_start_sec
@@ -99,7 +128,7 @@ export async function handleExport(env) {
 export async function handleList(env) {
   const { results } = await env.DB.prepare(
     `SELECT id, slug, title, thumbnail, hover_preview, service_types,
-            client, date_mmddyyyy, year, "order", home_size,
+            client, date_mmddyyyy, year, "order", home_size, show_on_home,
             home_col, home_row,
             youtube_url, pixieset_url, youtube_thumb_time_sec, youtube_preview_start_sec,
             version, body_md, description,
@@ -168,21 +197,27 @@ export async function handleCreate(request, env, ctx) {
       : null;
   const thumbSec = Number.isFinite(thumbT) ? thumbT : null;
   const prevSec = Number.isFinite(prevT) ? prevT : null;
+  const homeSize = normalizeHomeSize(data.home_size);
+  const showHome = data.show_on_home !== undefined
+    ? normalizeShowOnHomeDb(data.show_on_home)
+    : 0;
 
   await env.DB.prepare(
     `INSERT INTO projects (slug, title, body_md, description, thumbnail, hover_preview,
       service_types, client, date_mmddyyyy, year, "order",
-      home_size, home_col, home_row, youtube_url, pixieset_url,
+      home_size, show_on_home, home_col, home_row, youtube_url, pixieset_url,
       youtube_thumb_time_sec, youtube_preview_start_sec)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     data.slug, data.title, data.body_md || null,
     data.description != null ? String(data.description) : null,
     thumbnailVal, hoverVal,
     svcJson, data.client || null, data.date_mmddyyyy || null,
     data.year || null,
-    data.order || 0, data.home_size || '1x1',
-    Number.isInteger(data.home_col) ? data.home_col : null,
+    data.order || 0, homeSize, showHome,
+    Number.isInteger(data.home_col) && data.home_col >= 1 && data.home_col <= 5
+      ? data.home_col
+      : 1,
     Number.isInteger(data.home_row) ? data.home_row : null,
     data.youtube_url || null, data.pixieset_url || null,
     thumbSec, prevSec,
@@ -193,8 +228,6 @@ export async function handleCreate(request, env, ctx) {
     diff: { title: data.title },
   });
 
-  // Todo save → deploy: a Home mostra todos os projetos após a migration
-  // 0005 (sem `published` / `show_on_home`).
   return json(
     { slug: data.slug, created: true, triggerDeploy: true },
     201,
@@ -264,11 +297,18 @@ export async function handleUpdate(slug, request, env, ctx) {
     data[yk] = Number.isFinite(n) ? n : null;
   }
 
+  if (data.home_size !== undefined) {
+    data.home_size = normalizeHomeSize(data.home_size);
+  }
+  if (data.show_on_home !== undefined) {
+    data.show_on_home = normalizeShowOnHomeDb(data.show_on_home);
+  }
+
   const fields = [];
   const values = [];
   const updatable = [
     'title', 'body_md', 'description', 'thumbnail', 'hover_preview', 'client',
-    'date_mmddyyyy', 'year', 'order', 'home_size',
+    'date_mmddyyyy', 'year', 'order', 'home_size', 'show_on_home',
     'home_col', 'home_row',
     'youtube_url', 'pixieset_url', 'youtube_thumb_time_sec', 'youtube_preview_start_sec',
   ];
@@ -299,8 +339,7 @@ export async function handleUpdate(slug, request, env, ctx) {
     return error('Conflict: version mismatch', 409);
   }
 
-  // Qualquer save no admin gera novo build — a Home mostra todos os
-  // projetos (sem filtro `published`/`show_on_home` após a migration 0005).
+  // Qualquer save no admin gera novo build (Jekyll aplica `show_on_home` na Home).
   logAudit(ctx, env.DB, {
     action: 'update', targetType: 'project', targetId: slug,
     diff: { fields: Object.keys(data).filter(k => k !== 'version') },
