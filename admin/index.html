@@ -13,7 +13,7 @@
 
   <link rel="stylesheet" href="/admin/assets/css/admin.css" />
 
-  <script src="https://cdn.jsdelivr.net/npm/packery@2.1.2/dist/packery.pkgd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" crossorigin="anonymous"></script>
 
   <script src="/admin/assets/js/cf-api.js"></script>
   <script src="/admin/assets/js/auth.js"></script>
@@ -58,6 +58,9 @@
         <button type="button" @click="setView('hero')" :class="{ active: view === 'hero' }" class="tab-btn">
           Hero
         </button>
+        <button type="button" @click="setView('home')" :class="{ active: view === 'home' }" class="tab-btn">
+          Home
+        </button>
         <button type="button" @click="setView('projetos')" :class="{ active: view === 'projetos' }" class="tab-btn">
           Projetos
         </button>
@@ -80,18 +83,18 @@
 
       <div class="header-right">
         <button type="button"
-                x-show="view === 'projetos'"
+                x-show="view === 'home'"
                 class="btn btn-secondary"
                 @click="randomizeHomeSizes()"
-                title="Atribuir tamanhos aleatórios (1x1/1x2/2x1/2x2) aos projectos da Home">
+                title="Aleatorizar tamanhos 1x1/1x1,5/1x2 e ordem (rascunho) — projetos com «Exibir na Home»">
           Aleatorizar formatos
         </button>
         <button type="button"
-                x-show="view === 'projetos' && canUndoRandomHomeSizes"
+                x-show="view === 'home' && canUndoRandomHomeSizes"
                 class="btn btn-secondary"
                 @click="discardRandomizedHomeSizes()"
                 :disabled="publishing"
-                title="Repor tamanhos de grelha ao estado anterior à aleatorização (ainda em rascunho)">
+                title="Repor tamanhos/ordem ao estado anterior (rascunho)">
           Descartar formatos
         </button>
         <button type="button"
@@ -106,65 +109,112 @@
 
     <main class="admin-main">
 
-      <!-- ========== Aba Projetos ========== -->
-      <div class="projetos-area" x-show="view === 'projetos'">
+      <!-- ========== Aba Home (5 col + Sortable; sem vãos) ========== -->
+      <div class="projetos-area home-masonry-tab" x-show="view === 'home'">
         <div class="projetos-header">
           <div class="projetos-header__text">
-            <h2 class="projetos-title">Masonry da Home</h2>
+            <h2 class="projetos-title">Grelha da Home</h2>
             <p class="projetos-hint">
-              Prévia 1-para-1 da grade exibida na Home do site. Todos os
-              projetos cadastrados aparecem aqui. «Aleatorizar formatos»
-              gera uma nova distribuição de tamanhos (a ordem cronológica
-              é preservada); «Descartar formatos» repõe ao estado anterior
-              a essa aleatorização. As mudanças ficam em rascunho até
-              «Publicar». Clique num card para editar o projeto.
+              Só entram projectos com «Exibir na Home» (editor). Cada coluna é uma pilha
+              (sem buracos). Arraste entre colunas ou dentro da coluna: actualiza
+              <em>coluna</em> (1–5) e <em>order</em> (posição na coluna). «Publicar» grava. Formatos: 1×1, 1×1,5, 1×2.
             </p>
           </div>
         </div>
 
         <div id="admin-masonry-container" class="admin-masonry-container"
              :class="{ 'is-ready': masonryReady }">
-          <div class="admin-masonry-grid" id="admin-masonry-grid">
-            <template x-for="p in visibleProjects" :key="p._slug">
-              <a
-                href="#"
-                class="admin-project-item"
-                :data-size="p.home_size || '1x1'"
-                :data-slug="p._slug"
-                @click.prevent="openEditor(p)"
-                role="button"
-                :aria-label="p.title"
-                tabindex="0"
-                @keydown.enter.prevent="openEditor(p)"
-              >
-                <div class="admin-project-item__thumb">
-                  <img x-show="p.thumbnail"
-                       :src="p.thumbnail"
-                       :alt="p.title"
-                       loading="lazy" />
-                  <div x-show="!p.thumbnail" class="admin-project-item__ph" aria-hidden="true">
-                    Sem imagem
-                  </div>
-                </div>
-                <div class="admin-project-item__overlay">
-                  <h3 class="admin-project-item__title" x-text="p.title"></h3>
-                  <p class="admin-project-item__client"
-                     x-show="p.client"
-                     x-text="p.client"></p>
-                </div>
-                <div class="admin-project-item__badges" x-show="hasDraftFor(p._slug)">
-                  <span class="gc-badge draft">Rascunho</span>
-                </div>
-              </a>
+          <div class="admin-masonry-cols" id="admin-masonry-cols">
+            <template x-for="c in [0,1,2,3,4]" :key="'col'+c">
+              <div class="admin-projects-col" :data-col="c + 1" role="list">
+                <template x-for="p in homeColItems(c)" :key="p._slug">
+                  <a
+                    href="#"
+                    class="admin-project-item"
+                    :data-size="p.home_size || '1x1'"
+                    :data-order="p.order != null ? p.order : 0"
+                    :data-home-col="c + 1"
+                    :data-slug="p._slug"
+                    @click.prevent="openEditor(p)"
+                    role="button"
+                    :aria-label="p.title"
+                    tabindex="0"
+                    @keydown.enter.prevent="openEditor(p)"
+                  >
+                    <div class="admin-project-item__thumb">
+                      <img x-show="p.thumbnail"
+                           :src="p.thumbnail"
+                           :alt="p.title"
+                           loading="lazy" />
+                      <div x-show="!p.thumbnail" class="admin-project-item__ph" aria-hidden="true">
+                        Sem imagem
+                      </div>
+                    </div>
+                    <div class="admin-project-item__overlay">
+                      <h3 class="admin-project-item__title" x-text="p.title"></h3>
+                      <p class="admin-project-item__client"
+                         x-show="p.client"
+                         x-text="p.client"></p>
+                    </div>
+                    <div class="admin-project-item__badges" x-show="hasDraftFor(p._slug)">
+                      <span class="gc-badge draft">Rascunho</span>
+                    </div>
+                  </a>
+                </template>
+              </div>
             </template>
           </div>
         </div>
 
-        <div x-show="!loading && projects.length === 0" class="empty-state">
-          <p>Nenhum projeto cadastrado.</p>
+        <div x-show="!loading && view === 'home' && !visibleHomeProjects.length" class="empty-state">
+          <p>Nenhum projecto com «Exibir na Home» activo.</p>
           <p class="empty-state-hint">
-            Clique em «+ Novo Projeto» para criar o primeiro.
+            Abra um projecto no separador <strong>Projetos</strong> e active
+            a opção, ou crie um novo.
           </p>
+        </div>
+      </div>
+
+      <!-- ========== Aba Projetos (lista) ========== -->
+      <div class="projetos-list-area" x-show="view === 'projetos'">
+        <div class="projetos-header">
+          <div class="projetos-header__text">
+            <h2 class="projetos-title">Todos os projectos</h2>
+            <p class="projetos-hint">
+              Ordenados por data (mais recente primeiro). Clique num card
+              para editar — inclui projectos fora da Home.
+            </p>
+          </div>
+        </div>
+
+        <div class="admin-projetos-list-grid">
+          <template x-for="p in projectsListByDate" :key="p._slug">
+            <a
+              href="#"
+              class="admin-projetos-tile"
+              :data-slug="p._slug"
+              @click.prevent="openEditor(p)"
+              role="button"
+              :aria-label="p.title"
+              tabindex="0"
+              @keydown.enter.prevent="openEditor(p)"
+            >
+              <div class="admin-projetos-tile__thumb">
+                <img x-show="p.thumbnail" :src="p.thumbnail" :alt="p.title" loading="lazy" />
+                <div x-show="!p.thumbnail" class="admin-project-item__ph" aria-hidden="true">Sem imagem</div>
+              </div>
+              <h3 class="admin-projetos-tile__title" x-text="p.title"></h3>
+              <p class="admin-projetos-tile__client" x-show="p.client" x-text="p.client"></p>
+              <div class="admin-project-item__badges" x-show="hasDraftFor(p._slug)">
+                <span class="gc-badge draft">Rascunho</span>
+              </div>
+            </a>
+          </template>
+        </div>
+
+        <div x-show="!loading && !projectsListByDate.length" class="empty-state">
+          <p>Nenhum projeto cadastrado.</p>
+          <p class="empty-state-hint">Clique em «+ Novo Projeto» para criar o primeiro.</p>
         </div>
       </div>
 
@@ -317,6 +367,26 @@
           <label class="field-label">Descrição</label>
           <textarea x-model="form.description" class="input" rows="4"
                     placeholder="Resumo editorial…"></textarea>
+
+          <div class="field-row">
+            <div class="field-col field-col--grow">
+              <label class="field-label flex-align">
+                <input type="checkbox" x-model="form.show_on_home" class="checkbox-input" />
+                <span>Exibir na Home</span>
+              </label>
+              <p class="field-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--text-2)">
+                A ordem na grelha da Home é definida na aba <strong>Home</strong> (arrastar).
+              </p>
+            </div>
+            <div class="field-col">
+              <label class="field-label">Tamanho na Home</label>
+              <select x-model="form.home_size" class="input">
+                <option value="1x1">1×1</option>
+                <option value="1x1.5">1×1,5</option>
+                <option value="1x2">1×2</option>
+              </select>
+            </div>
+          </div>
 
           <div class="field-row editor-media-row">
             <div class="field-col">

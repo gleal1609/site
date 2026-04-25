@@ -18,6 +18,7 @@ permalink: /projects.json
     "client": {{ project.client | jsonify }},
     "date_mmddyyyy": {{ project.date_mmddyyyy | jsonify }},
     "year": {{ project.year }},
+    "show_on_home": {{ project.show_on_home | default: false }},
     "order": {% if project.order %}{{ project.order }}{% else %}999{% endif %},
     "home_size": {% if project.home_size %}{{ project.home_size | jsonify }}{% else %}"1x1"{% endif %},
     "pixieset_url": {% if project.pixieset_url %}{{ project.pixieset_url | jsonify }}{% else %}null{% endif %},

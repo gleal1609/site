@@ -238,9 +238,8 @@
 .load-more-wrap {
   display: flex;
   justify-content: center;
-  /* Top spacing: the masonry grid is absolutely positioned, so we need
-     explicit room between the last tile row and the button. */
-  padding: clamp(2rem, 4vw, 3rem) 1rem clamp(3rem, 6vw, 4rem);
+  /* Espaço entre a grelha (flex) e o botão / footer */
+  padding: clamp(2.25rem, 5vw, 3.5rem) 1.25rem clamp(2.5rem, 6vw, 4rem);
   margin-top: 0;
 }
 
@@ -292,15 +291,13 @@
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: 0;
   -webkit-tap-highlight-color: transparent;
   transform-style: preserve-3d;
   perspective: 800px;
   cursor: pointer;
   outline: none;
-  /* Sombra neutra (sem filter no pai — filter quebra 3D do logo) */
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-  border-radius: 6px;
+  box-shadow: none;
   overflow: visible;
 }
 

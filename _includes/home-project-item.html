@@ -1,0 +1,43 @@
+{% assign project = include.project %}
+{% assign dcol = include.dcol | default: 0 | plus: 0 | modulo: 5 %}
+      {% if project.url %}
+        {% assign proj_url = project.url %}
+      {% else %}
+        {% assign proj_url = project.slug | prepend: "/projects/" | append: "/" %}
+      {% endif %}
+      {% if project.service_types %}{% capture _svcjson %}{{ project.service_types | jsonify }}{% endcapture %}{% else %}{% assign _svcjson = '[]' %}{% endif %}
+      <a href="{{ proj_url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-home-col="{{ dcol }}" data-order="{{ project.order | default: 0 }}" data-services="{{ _svcjson | replace: '"', '&quot;' }}">
+      <div class="project-thumbnail-container">
+        {% assign _thumb = project.thumbnail | strip %}
+        {% assign _hover = project.hover_preview | strip %}
+        {% if project.hover_preview %}
+          <video 
+            class="project-hover-video" 
+            muted 
+            playsinline 
+            loop 
+            preload="metadata"
+            poster="{% if _thumb contains '://' %}{{ _thumb }}{% else %}{{ _thumb | relative_url }}{% endif %}"
+            webkit-playsinline="true">
+            {% assign _hp = project.hover_preview | downcase %}
+            {% if _hp contains '.webm' %}
+              <source src="{% if _hover contains '://' %}{{ _hover }}{% else %}{{ _hover | relative_url }}{% endif %}" type="video/webm">
+            {% else %}
+              <source src="{% if _hover contains '://' %}{{ _hover }}{% else %}{{ _hover | relative_url }}{% endif %}" type="video/mp4">
+            {% endif %}
+          </video>
+        {% endif %}
+        <img 
+          src="{% if _thumb contains '://' %}{{ _thumb }}{% else %}{{ _thumb | relative_url }}{% endif %}" 
+          alt="{{ project.title }}"
+          class="project-thumbnail"
+          loading="lazy"
+        />
+      </div>
+      <div class="project-overlay">
+        <h3 class="project-title">{{ project.title }}</h3>
+        {% if project.client %}
+          <p class="project-client">{{ project.client }}</p>
+        {% endif %}
+      </div>
+      </a>

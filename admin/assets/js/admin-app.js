@@ -35,33 +35,26 @@ const ADMIN_CONFIG = {
 function pickWeightedHomeSize() {
   const r = Math.random() * 100;
   if (r < 60) return '1x1';
-  if (r < 75) return '1x2';
-  if (r < 90) return '2x1';
-  return '2x2';
+  if (r < 80) return '1x2';
+  return '1x1.5';
 }
 
 /**
- * Gera um array de tamanhos com distribuição balanceada e embaralhado
- * de forma a evitar corridas longas do mesmo tamanho. A ordem do array é
- * aplicada posição-a-posição sobre os projetos (preservando a ordem
- * cronológica dos próprios projetos).
- *
- * Proporção-alvo: 55% 1x1 · 17% 1x2 · 17% 2x1 · 11% 2x2.
- * Garante pelo menos 1 tile de cada tamanho quando N >= 4.
+ * Tamanhos 1x1, 1x1.5, 1x2 (grelha 5 col, uma coluna de largura).
+ * Proporção-alvo: 55% 1x1 · 25% 1x2 · 20% 1x1.5. Embaralhado; anti-sequência de 3 iguais.
  */
 function buildBalancedSizePool(n) {
   if (n <= 0) return [];
-  const targets = { '1x1': 0.55, '1x2': 0.17, '2x1': 0.17, '2x2': 0.11 };
-  const order = ['1x1', '1x2', '2x1', '2x2'];
+  const targets = { '1x1': 0.55, '1x2': 0.25, '1x1.5': 0.2 };
+  const order = ['1x1', '1x2', '1x1.5'];
   const counts = {};
   let assigned = 0;
   for (const k of order) {
     counts[k] = Math.round(targets[k] * n);
     assigned += counts[k];
   }
-  // Ajuste fino para fechar exactamente em N.
   let drift = n - assigned;
-  const adj = drift > 0 ? ['1x1', '1x2', '2x1', '2x2'] : ['2x2', '2x1', '1x2', '1x1'];
+  const adj = drift > 0 ? ['1x1', '1x2', '1x1.5'] : ['1x1.5', '1x2', '1x1'];
   let i = 0;
   while (drift !== 0) {
     const k = adj[i % adj.length];
@@ -74,8 +67,7 @@ function buildBalancedSizePool(n) {
     }
     i += 1;
   }
-  // Assegura pelo menos 1 de cada tipo quando houver «orçamento».
-  if (n >= 4) {
+  if (n >= 3) {
     for (const k of order) {
       if (counts[k] === 0) {
         const donor = order
@@ -92,13 +84,10 @@ function buildBalancedSizePool(n) {
 
   const pool = [];
   for (const k of order) for (let c = 0; c < counts[k]; c++) pool.push(k);
-  // Shuffle Fisher-Yates.
   for (let j = pool.length - 1; j > 0; j--) {
     const r = Math.floor(Math.random() * (j + 1));
     [pool[j], pool[r]] = [pool[r], pool[j]];
   }
-  // Anti-run: evita três tamanhos iguais em sequência. Troca o item «ofensor»
-  // pelo próximo diferente no array. A ordem geral continua aleatória.
   for (let k = 2; k < pool.length; k++) {
     if (pool[k] === pool[k - 1] && pool[k] === pool[k - 2]) {
       let swap = -1;
@@ -113,6 +102,21 @@ function buildBalancedSizePool(n) {
   return pool;
 }
 
+function dateMmddyyyySortKey(p) {
+  const s = p && p.date_mmddyyyy != null ? String(p.date_mmddyyyy) : '';
+  if (s.length === 8 && /^\d{8}$/.test(s)) {
+    return s.slice(4) + s.slice(0, 4);
+  }
+  const y = p && p.year != null ? Number(p.year) : 0;
+  return y ? String(10000 + y) : '0';
+}
+
+function truthyShowOnHome(p) {
+  if (!p) return false;
+  const v = p.show_on_home;
+  return v === true || v === 1 || v === '1';
+}
+
 function adminApp() {
   return {
     authed: false,
@@ -123,8 +127,9 @@ function adminApp() {
     loading: true,
     saving: false,
 
-    /** view: 'hero' (ex-Site) | 'projetos' (todos os projetos — a Home mostra tudo) */
+    /** view: 'hero' | 'home' (5 col + Sortable) | 'projetos' (lista por data) */
     view: 'hero',
+    _homeSortableInstances: [],
     /** @type {Record<string, { payload: object, thumbFile: File|null, videoFile: File|null, isNew: boolean, version?: number }>} */
     projectDrafts: {},
 
@@ -173,7 +178,6 @@ function adminApp() {
     _auth: null,
     _api: null,
     _beforeUnloadBound: null,
-    _packery: null,
     _masonryResizeBound: null,
 
     toast: null,
@@ -324,33 +328,78 @@ function adminApp() {
         this._loadSiteSettings();
         return;
       }
-      if (this.view === 'projetos') {
-        // Alpine tem de renderizar o x-for antes de inicializar o Packery.
+      if (this.view === 'home') {
         this.$nextTick(() => this._initMasonry());
+        return;
+      }
+      if (this.view === 'projetos') {
+        this._destroyMasonry();
       }
     },
 
-    get visibleProjects() {
-      if (this.view === 'projetos') {
-        // A Home mostra TODOS os projetos (migration 0005 removeu os
-        // filtros `show_on_home` e `published`). A ordem replica
-        // exactamente o Liquid da Home: `sort asc (estável) → reverse`
-        // — sequência que INVERTE a ordem dos empates em relação a um
-        // `sort desc` directo. Como a API devolve os projetos em
-        // `date DESC, year DESC, slug ASC`, tanto aqui quanto no Jekyll
-        // os empates acabam em `year ASC, slug DESC`.
-        const arr = this.projects.slice();
-        arr.sort((a, b) => {
-          const da = String(a.date_mmddyyyy || '');
-          const db = String(b.date_mmddyyyy || '');
-          if (da < db) return -1;
-          if (da > db) return 1;
-          return 0;
+    /** 5 colunas: D1 `home_col` 1–5 + order *dentro* da coluna (igual Jekyll; sem vãos). Legado 0–4 = índice. */
+    get visibleHomeProjectCols() {
+      if (this.view !== 'home') return [[], [], [], [], []];
+      const arr = this.projects.filter((p) => truthyShowOnHome(p));
+      arr.sort((a, b) => {
+        const oa = Number(a.order != null ? a.order : 999999);
+        const ob = Number(b.order != null ? b.order : 999999);
+        if (oa !== ob) return oa - ob;
+        return String(a._slug).localeCompare(String(b._slug));
+      });
+      const cols = [[], [], [], [], []];
+      arr.forEach((p, i) => {
+        const n = p.home_col != null && p.home_col !== '' ? Number(p.home_col) : NaN;
+        let idx;
+        if (Number.isFinite(n) && n >= 1 && n <= 5) {
+          idx = (n - 1) | 0;
+        } else if (Number.isFinite(n) && n >= 0 && n <= 4) {
+          idx = n | 0;
+        } else {
+          idx = i % 5;
+        }
+        if (idx < 0) idx = 0;
+        if (idx > 4) idx = 4;
+        cols[idx].push(p);
+      });
+      for (let cc = 0; cc < 5; cc += 1) {
+        cols[cc].sort((a, b) => {
+          const oa = Number(a.order != null ? a.order : 999999);
+          const ob = Number(b.order != null ? b.order : 999999);
+          if (oa !== ob) return oa - ob;
+          return String(a._slug).localeCompare(String(b._slug));
         });
-        arr.reverse();
-        return arr;
       }
-      return [];
+      return cols;
+    },
+
+    homeColItems(c) {
+      const cols = this.visibleHomeProjectCols;
+      return cols && cols[c] ? cols[c] : [];
+    },
+
+    get visibleHomeProjects() {
+      if (this.view !== 'home') return [];
+      const cols = this.visibleHomeProjectCols;
+      const out = [];
+      for (let c = 0; c < 5; c += 1) {
+        (cols[c] || []).forEach((p) => out.push(p));
+      }
+      return out;
+    },
+
+    /** Todos os projetos, data mais recente primeiro (tab Projetos). */
+    get projectsListByDate() {
+      if (this.view !== 'projetos') return [];
+      const arr = this.projects.slice();
+      arr.sort((a, b) => {
+        const ka = dateMmddyyyySortKey(a);
+        const kb = dateMmddyyyySortKey(b);
+        const c = kb.localeCompare(ka);
+        if (c !== 0) return c;
+        return String(a._slug).localeCompare(String(b._slug));
+      });
+      return arr;
     },
 
     get heroPreviewSrc() {
@@ -466,18 +515,15 @@ function adminApp() {
     },
 
     randomizeHomeSizes() {
-      // Usamos a mesma ordem da Home (`visibleProjects` = todos os projetos,
-      // cronológico desc) para que o pool balanceado seja aplicado
-      // posição-a-posição sem alterar a ordem dos projetos.
-      const targets = this.visibleProjects;
+      const targets = this.visibleHomeProjects;
       if (!targets.length) {
-        this._toast('Nenhum projeto para aleatorizar.', 'warning');
+        this._toast('Nenhum projeto com «Exibir na Home» para aleatorizar.', 'warning');
         return;
       }
       if (!this._homeSizeRandomizeSnapshot) {
         const snap = {};
         for (const p of targets) {
-          snap[p._slug] = p.home_size || '1x1';
+          snap[p._slug] = { home_size: p.home_size || '1x1' };
         }
         this._homeSizeRandomizeSnapshot = snap;
       }
@@ -498,13 +544,13 @@ function adminApp() {
           };
         }
         const live = this.projects.find((x) => x._slug === key);
-        if (live) live.home_size = size;
+        if (live) {
+          live.home_size = size;
+        }
       });
-      // Reaplica tamanhos + re-layout (após Alpine atualizar o DOM com os
-      // novos data-size).
       this.$nextTick(() => this._relayoutMasonry());
       this._toast(
-        `Formatos aleatorizados para ${targets.length} projeto(s). Publique para salvar no servidor.`,
+        `Formatos (rascunho) aleatorizados para ${targets.length} projeto(s). Coluna/ordem mantêm-se; publique para salvar.`,
         'success',
       );
     },
@@ -521,14 +567,17 @@ function adminApp() {
       }
       for (const p of this.projects) {
         if (!Object.prototype.hasOwnProperty.call(snap, p._slug)) continue;
-        const h = snap[p._slug];
-        p.home_size = h;
+        const entry = snap[p._slug];
+        const h = typeof entry === 'object' && entry != null ? entry.home_size : entry;
+        p.home_size = h || '1x1';
         const d = this.projectDrafts[p._slug];
-        if (d) d.payload.home_size = h;
+        if (d) {
+          d.payload.home_size = p.home_size;
+        }
       }
       this._homeSizeRandomizeSnapshot = null;
       this.$nextTick(() => this._relayoutMasonry());
-      this._toast('Tamanhos de grelha repostos. As alterações continuam em rascunho até «Publicar».', 'success');
+      this._toast('Tamanhos repostos. As alterações continuam em rascunho até «Publicar».', 'success');
     },
 
     _numOrNull(v) {
@@ -546,16 +595,28 @@ function adminApp() {
         client: p.client || '',
         date_mmddyyyy: p.date_mmddyyyy || '',
         year: p.year != null ? p.year : null,
+        order: p.order != null ? Number(p.order) : 0,
+        home_col: Math.max(1, Math.min(5, Number(p.home_col) || 1)),
         home_size: p.home_size || '1x1',
+        show_on_home: truthyShowOnHome(p) ? 1 : 0,
         youtube_url: p.youtube_url || '',
         pixieset_url: p.pixieset_url || '',
         youtube_thumb_time_sec: this._numOrNull(p.youtube_thumb_time_sec),
         youtube_preview_start_sec: this._numOrNull(p.youtube_preview_start_sec),
-        ...overrides,
       };
       if (p.thumbnail) base.thumbnail = p.thumbnail;
       if (p.hover_preview) base.hover_preview = p.hover_preview;
-      return base;
+      const out = { ...base, ...overrides };
+      if (overrides.show_on_home !== undefined) {
+        out.show_on_home = truthyShowOnHome({ show_on_home: overrides.show_on_home }) ? 1 : 0;
+      }
+      if (overrides.order !== undefined) {
+        out.order = Number(overrides.order) || 0;
+      }
+      if (overrides.home_col !== undefined) {
+        out.home_col = Math.max(1, Math.min(5, Number(overrides.home_col) || 1));
+      }
+      return out;
     },
 
     async openEditor(project) {
@@ -576,6 +637,9 @@ function adminApp() {
           description: data.description || '',
           _slug: project._slug,
         };
+        this.form.show_on_home = truthyShowOnHome(this.form);
+        if (this.form.order == null) this.form.order = 0;
+        if (this.form.home_col == null || this.form.home_col === '') this.form.home_col = 1;
         if (!Array.isArray(this.form.service_types)) {
           this.form.service_types = [];
         }
@@ -607,6 +671,9 @@ function adminApp() {
       this.form.date_mmddyyyy = pl.date_mmddyyyy || '';
       this.form.year = pl.year != null ? pl.year : this.form.year;
       this.form.home_size = pl.home_size || '1x1';
+      this.form.show_on_home = truthyShowOnHome(pl);
+      this.form.order = pl.order != null ? pl.order : 0;
+      this.form.home_col = pl.home_col != null ? pl.home_col : 1;
       this.form.youtube_url = pl.youtube_url || '';
       this.form.pixieset_url = pl.pixieset_url || '';
       this.form.youtube_thumb_time_sec = pl.youtube_thumb_time_sec;
@@ -645,6 +712,9 @@ function adminApp() {
         date_mmddyyyy: '',
         year: new Date().getFullYear(),
         home_size: '1x1',
+        show_on_home: false,
+        home_col: 1,
+        order: 0,
         youtube_url: '',
         pixieset_url: '',
         body: '',
@@ -766,6 +836,11 @@ function adminApp() {
     },
 
     _buildPayloadFromForm(slugForUploads) {
+      const orderVal =
+        this.form.order != null && this.form.order !== '' ? Number(this.form.order) : 0;
+      const hcVal =
+        this.form.home_col != null && this.form.home_col !== '' ? Number(this.form.home_col) : 1;
+      const homeCol = Math.max(1, Math.min(5, Number.isFinite(hcVal) ? hcVal : 1));
       const payload = {
         title: this.form.title,
         body_md: this.form.body || '',
@@ -774,7 +849,10 @@ function adminApp() {
         client: this.form.client || '',
         date_mmddyyyy: this.form.date_mmddyyyy || '',
         year: this.form.year ? Number(this.form.year) : null,
+        order: Number.isFinite(orderVal) ? orderVal : 0,
+        home_col: homeCol,
         home_size: this.form.home_size || '1x1',
+        show_on_home: this.form.show_on_home ? 1 : 0,
         youtube_url: this.form.youtube_url || '',
         pixieset_url: this.form.pixieset_url || '',
         youtube_thumb_time_sec: this._numOrNull(this.form.youtube_thumb_time_sec),
@@ -820,6 +898,9 @@ function adminApp() {
           p.title = this.form.title;
           p.home_size = this.form.home_size || '1x1';
           p.client = this.form.client || '';
+          p.show_on_home = this.form.show_on_home ? 1 : 0;
+          p.order = payload.order != null ? payload.order : 0;
+          p.home_col = payload.home_col;
           if (this.form.thumbnail) p.thumbnail = this.form.thumbnail;
           if (this.form.hover_preview) p.hover_preview = this.form.hover_preview;
         }
@@ -834,11 +915,11 @@ function adminApp() {
         );
         this.$nextTick(() => {
           this.closeEditor();
-          if (this.view === 'projetos') {
+          if (this.view === 'home') {
             this.$nextTick(() => this._relayoutMasonry());
           }
         });
-      } else if (this.view === 'projetos') {
+      } else if (this.view === 'home') {
         this.$nextTick(() => this._relayoutMasonry());
       }
       return true;
@@ -913,7 +994,7 @@ function adminApp() {
         if (siteDraft) await this._loadSiteSettings();
         this._homeSizeRandomizeSnapshot = null;
         this.closeEditor();
-        if (this.view === 'projetos') {
+        if (this.view === 'home') {
           this.$nextTick(() => this._relayoutMasonry());
         }
       } catch (e) {
@@ -957,7 +1038,7 @@ function adminApp() {
         await this._maybeTriggerDeploy(result);
         this.closeEditor();
         await this._loadProjects({ silent: true });
-        if (this.view === 'projetos') {
+        if (this.view === 'home') {
           this.$nextTick(() => this._relayoutMasonry());
         }
       } catch (e) {
@@ -1355,127 +1436,136 @@ function adminApp() {
       }
     },
 
-    /* ====== Masonry (Projetos tab — simula a Home) ======
-     *
-     * Replica fielmente o algoritmo de «masonry-init.js» da Home:
-     *   1. Packery é criado APENAS com os primeiros INITIAL_VISIBLE itens
-     *      (os restantes recebem a classe `is-pack-hidden` e são filtrados
-     *      pelo `itemSelector`).
-     *   2. Em lotes de LOAD_STEP, removemos a classe e chamamos
-     *      `packery.appended(lote)` — que PRESERVA as posições dos itens
-     *      já colocados e encaixa os novos nos vãos. Sem isso, um único
-     *      `layout()` com todos os itens produz um packing diferente.
-     *   3. Durante o progressive append, `transitionDuration` é 0 para não
-     *      animar; depois restauramos 0.25s (idêntico à Home).
-     *
-     * `_masonryDomOrder` é um Map construído UMA VEZ a partir da ordem
-     * cronológica do DOM, e usado como tiebreaker estável na ordenação
-     * por área decrescente (igual à Home).
-     */
-
+    /* ====== Home: 5 colunas empilhadas + Sortable (igual site; sem vãos) ====== */
     _masonryConfig: {
-      GUTTER: 4,
-      BASE_ITEM: 200,
-      MIN_COL: 150,
+      GUTTER: 14,
+      HOME_COLS: 5,
       INITIAL_VISIBLE: 12,
       LOAD_STEP: 8,
     },
     _masonryDomOrder: null,
 
+    _rasterOrderAdminEls() {
+      const root = document.getElementById('admin-masonry-cols');
+      if (!root) return [];
+      const colEls = root.querySelectorAll('.admin-projects-col');
+      const buckets = Array.from(colEls).map((c) => Array.from(c.querySelectorAll('.admin-project-item')));
+      const maxH = Math.max(0, ...buckets.map((b) => b.length), 0);
+      const out = [];
+      for (let r = 0; r < maxH; r += 1) {
+        for (let c = 0; c < 5; c += 1) {
+          if (buckets[c] && buckets[c][r]) out.push(buckets[c][r]);
+        }
+      }
+      return out;
+    },
+
     _initMasonry() {
-      const grid = document.getElementById('admin-masonry-grid');
-      const container = document.getElementById('admin-masonry-container');
-      if (!grid || !container) return;
-      if (typeof Packery === 'undefined') return;
-
-      this._destroyMasonry();
-
-      const allItems = Array.from(grid.querySelectorAll('.admin-project-item'));
-      if (!allItems.length) {
+      const cols = document.getElementById('admin-masonry-cols');
+      if (!cols) {
         this.masonryReady = true;
         return;
       }
+      if (typeof Sortable === 'undefined') {
+        this.masonryReady = true;
+        return;
+      }
+      this._destroyMasonry();
 
-      // Mapa DOM order (cronológico) — construído UMA ÚNICA VEZ e usado
-      // como tiebreaker em todas as ordenações por área.
-      this._masonryDomOrder = new Map();
-      allItems.forEach((el, i) => this._masonryDomOrder.set(el, i));
+      this.$nextTick(() => {
+        const allEls = Array.from(cols.querySelectorAll('.admin-project-item'));
+        if (!allEls.length) {
+          this.masonryReady = true;
+          return;
+        }
 
-      const { columnWidth, rowHeight, columns } = this._calcMasonryGrid(container);
-      allItems.forEach((el) => this._sizeMasonryItem(el, columnWidth, rowHeight, columns));
+        const { columnWidth, rowHeight, columns } = this._calcMasonryGrid(cols);
+        allEls.forEach((el) => {
+          el.classList.remove('is-pack-hidden');
+          this._sizeMasonryItem(el, columnWidth, rowHeight, columns);
+        });
 
-      const { INITIAL_VISIBLE, LOAD_STEP } = this._masonryConfig;
-      const firstBatch = allItems.slice(0, INITIAL_VISIBLE);
-      const rest = allItems.slice(INITIAL_VISIBLE);
+        const colEls = cols.querySelectorAll('.admin-projects-col');
+        colEls.forEach((cel) => {
+          const s = Sortable.create(cel, {
+            group: 'reverso-home-cols',
+            animation: 160,
+            draggable: '.admin-project-item',
+            onEnd: () => {
+              this._applyHomeOrderFromSortable();
+              this._reapplyAdminMasonrySizes();
+            },
+          });
+          this._homeSortableInstances.push(s);
+        });
 
-      // Oculta os itens para além dos 12 primeiros (mesma classe usada
-      // pela Home). Será removida lote-a-lote no progressive append.
-      rest.forEach((el) => el.classList.add('is-pack-hidden'));
+        this.masonryReady = true;
 
-      this._packery = new Packery(grid, {
-        // Filtra hidden: idêntico ao selector da Home.
-        itemSelector: '.admin-project-item:not(.is-pack-hidden)',
-        gutter: this._masonryConfig.GUTTER,
-        columnWidth,
-        rowHeight,
-        percentPosition: false,
-        initLayout: false,
-        transitionDuration: 0,
+        if (!this._masonryResizeBound) {
+          let timer = null;
+          this._masonryResizeBound = () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => this._relayoutMasonry(), 200);
+          };
+          window.addEventListener('resize', this._masonryResizeBound);
+        }
       });
-      this._reorderMasonryForPacking();
-      this._packery.layout();
-
-      // Progressive append em lotes de 8. Cada chamada de `appended()`
-      // preserva os itens já colocados e encaixa os novos — exactamente
-      // como a Home faria ao clicar «Carregar mais» repetidamente.
-      for (let cursor = 0; cursor < rest.length; cursor += LOAD_STEP) {
-        const batch = rest.slice(cursor, cursor + LOAD_STEP);
-        batch.forEach((el) => el.classList.remove('is-pack-hidden'));
-        const ordered = batch.slice().sort((a, b) => this._compareBySizeAndDom(a, b));
-        try {
-          this._packery.appended(ordered);
-        } catch (_) { /* ignore */ }
-      }
-
-      // Restaura a transição para futuros relayouts (resize).
-      this._packery.options.transitionDuration = '0.25s';
-      this.masonryReady = true;
-
-      if (!this._masonryResizeBound) {
-        // Debounce 200ms — idêntico ao handleResize da Home — evita
-        // re-init em cascata durante o arraste da janela.
-        let timer = null;
-        this._masonryResizeBound = () => {
-          clearTimeout(timer);
-          timer = setTimeout(() => this._relayoutMasonry(), 200);
-        };
-        window.addEventListener('resize', this._masonryResizeBound);
-      }
     },
 
-    /**
-     * Resize / alteração de dados. Em caso de mudança significativa
-     * (contagem de colunas, randomização, novo item, remoção) fazemos um
-     * re-init completo para manter o algoritmo two-phase idêntico ao da
-     * Home. Em resize sem troca de `columns` poderíamos só redimensionar;
-     * por simplicidade e paridade, sempre re-iniciamos.
-     */
+    _applyHomeOrderFromSortable() {
+      const root = document.getElementById('admin-masonry-cols');
+      if (!root) return;
+      const colEls = root.querySelectorAll('.admin-projects-col');
+      colEls.forEach((el, cIdx) => {
+        if (cIdx < 0 || cIdx > 4) return;
+        const colNum = cIdx + 1; /* 1–5 */
+        const links = el.querySelectorAll('.admin-project-item');
+        links.forEach((node, i) => {
+          const slug = node.getAttribute('data-slug');
+          if (!slug) return;
+          node.setAttribute('data-order', String(i));
+          node.setAttribute('data-home-col', String(colNum));
+          const p = this.projects.find((x) => x._slug === slug);
+          if (p) {
+            p.order = i;
+            p.home_col = colNum;
+          }
+          const ex = this.projectDrafts[slug];
+          const pl = { order: i, home_col: colNum };
+          if (ex) {
+            ex.payload = { ...ex.payload, ...pl };
+          } else if (p) {
+            this.projectDrafts[slug] = {
+              payload: this._projectToPayload(p, pl),
+              thumbFile: null,
+              videoFile: null,
+              isNew: false,
+              version: p.version,
+            };
+          }
+        });
+      });
+    },
+
+    _reapplyAdminMasonrySizes() {
+      const cols = document.getElementById('admin-masonry-cols');
+      if (!cols) return;
+      const { columnWidth, rowHeight, columns } = this._calcMasonryGrid(cols);
+      cols.querySelectorAll('.admin-project-item').forEach((el) => {
+        this._sizeMasonryItem(el, columnWidth, rowHeight, columns);
+      });
+    },
+
     _relayoutMasonry() {
-      if (this.view !== 'projetos') return;
-      const grid = document.getElementById('admin-masonry-grid');
-      if (!grid) return;
-      // Limpa qualquer `is-pack-hidden` remanescente antes do re-init
-      // (evita que o próximo init herde estado dos lotes anteriores).
-      grid.querySelectorAll('.admin-project-item.is-pack-hidden')
-        .forEach((el) => el.classList.remove('is-pack-hidden'));
-      this._initMasonry();
+      if (this.view !== 'home') return;
+      this._reapplyAdminMasonrySizes();
     },
 
     _destroyMasonry() {
-      if (this._packery) {
-        try { this._packery.destroy(); } catch (_) { /* ignore */ }
-        this._packery = null;
-      }
+      this._homeSortableInstances.forEach((s) => {
+        try { s.destroy(); } catch (_) {}
+      });
+      this._homeSortableInstances = [];
       if (this._masonryResizeBound) {
         window.removeEventListener('resize', this._masonryResizeBound);
         this._masonryResizeBound = null;
@@ -1484,57 +1574,59 @@ function adminApp() {
       this.masonryReady = false;
     },
 
-    /**
-     * Comparador estável: ordena por área (maiores primeiro, idêntico ao
-     * `reorderPackeryItemsForPacking` da Home) e usa a ordem DOM
-     * cronológica como tiebreaker. Opera em elementos DOM.
-     */
-    _compareBySizeAndDom(a, b) {
-      const sA = this._parseSize(a);
-      const sB = this._parseSize(b);
-      const areaA = sA.w * sA.h;
-      const areaB = sB.w * sB.h;
-      if (areaA !== areaB) return areaB - areaA;
-      const domOrder = this._masonryDomOrder;
-      const iA = domOrder ? domOrder.get(a) : 0;
-      const iB = domOrder ? domOrder.get(b) : 0;
-      return (iA ?? 0) - (iB ?? 0);
-    },
-
-    _calcMasonryGrid(container) {
-      const { GUTTER, BASE_ITEM, MIN_COL } = this._masonryConfig;
-      const rect = container.getBoundingClientRect();
-      const containerWidth = Math.max(rect.width || 0, container.clientWidth || 0);
-      const columns = Math.max(
-        1,
-        Math.floor((containerWidth + GUTTER) / (BASE_ITEM + GUTTER)),
+    _calcMasonryGrid(sizingEl) {
+      const { GUTTER, HOME_COLS } = this._masonryConfig;
+      if (!sizingEl) {
+        return { columnWidth: 1, rowHeight: 1, columns: HOME_COLS };
+      }
+      const wGrid = Math.max(
+        sizingEl.getBoundingClientRect().width || 0,
+        sizingEl.clientWidth || 0,
       );
-      const rawCol = Math.floor((containerWidth - GUTTER * (columns - 1)) / columns);
-      const columnWidth = Math.max(MIN_COL, rawCol);
-      return { columnWidth, rowHeight: columnWidth, columns };
+      const parent = sizingEl.parentElement;
+      let W = wGrid;
+      if (parent && (parent.id === 'admin-masonry-container' || parent.classList?.contains('admin-masonry-container'))) {
+        const st = getComputedStyle(parent);
+        const pl = parseFloat(st.paddingLeft) || 0;
+        const pr = parseFloat(st.paddingRight) || 0;
+        const wInner = parent.getBoundingClientRect().width - pl - pr;
+        W = Math.max(0, Math.min(wGrid, wInner));
+      }
+      const col = (W - 4 * GUTTER) / HOME_COLS;
+      const columnWidth = Math.max(1, Math.floor(col * 1000) / 1000);
+      return { columnWidth, rowHeight: columnWidth, columns: HOME_COLS };
     },
 
-    _parseSize(item) {
-      const [w, h] = (item.getAttribute('data-size') || '1x1').split('x').map(Number);
-      return { w: w || 1, h: h || 1 };
+    _parseMasonrySize(item) {
+      const s = String(item.getAttribute('data-size') || '1x1')
+        .toLowerCase()
+        .replace(/\s/g, '');
+      const m = s.match(/^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/);
+      if (!m) return { w: 1, h: 1 };
+      let w = parseFloat(m[1]);
+      let h = parseFloat(m[2]);
+      if (!Number.isFinite(w) || w <= 0) w = 1;
+      if (!Number.isFinite(h) || h <= 0) h = 1;
+      if (w === 2 && h === 1) { w = 1; h = 1; }
+      if (w === 2 && h === 2) { w = 1; h = 2; }
+      w = 1;
+      if (h === 3) h = 1.5;
+      const allowed = [1, 1.5, 2];
+      if (!allowed.includes(h)) {
+        if (h < 1.25) h = 1;
+        else if (h < 1.75) h = 1.5;
+        else h = 2;
+      }
+      return { w, h };
     },
 
     _sizeMasonryItem(item, columnWidth, rowHeight, columns) {
       const { GUTTER } = this._masonryConfig;
-      let { w, h } = this._parseSize(item);
-      if (columns && w > columns) w = columns;
+      let { w, h } = this._parseMasonrySize(item);
+      if (w > columns) w = columns;
       item.style.width = `${w * columnWidth + (w - 1) * GUTTER}px`;
+      item.style.maxWidth = '100%';
       item.style.height = `${h * rowHeight + (h - 1) * GUTTER}px`;
-    },
-
-    _reorderMasonryForPacking() {
-      if (!this._packery || !this._packery.items) return;
-      // Usa o mapa estável construído em `_initMasonry` (ordem DOM
-      // cronológica original). NÃO deriva do estado actual do Packery,
-      // que já foi reordenado por chamadas anteriores.
-      this._packery.items.sort((a, b) =>
-        this._compareBySizeAndDom(a.element, b.element),
-      );
     },
 
     _makeSlug() {
