@@ -51,7 +51,7 @@ collections:
       - { label: "Ano", name: year, widget: number, value_type: int }
       - { label: "Ordem (Home, arrastar no painel web)", name: order, widget: number, value_type: int }
       - { label: "Exibir na Home", name: show_on_home, widget: boolean, default: false }
-      - label: "Tamanho na Home"
+      - label: "Formato na Home"
         name: home_size
         widget: select
         options: ["1x1", "1x1.5", "1x2"]

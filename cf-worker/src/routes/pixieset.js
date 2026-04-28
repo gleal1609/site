@@ -1,7 +1,27 @@
 import { json, error } from '../utils/response.js';
 
-const UA =
+const UA_FIREFOX =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0';
+const UA_CHROME =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+
+function browserNavigationHeaders(ua, referer) {
+  return {
+    'User-Agent': ua,
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': referer ? 'same-origin' : 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
+    DNT: '1',
+    Connection: 'keep-alive',
+  };
+}
+
+const UA = UA_FIREFOX;
 
 function isPixiesetPageUrl(href) {
   let u;
@@ -173,10 +193,14 @@ async function mergeLoadPhotosPages(domain, cuk, cid, cookie, referer, attempts)
     for (let page = 1; page <= 8; page += 1) {
       const loadUrl = buildLoadPhotosUrl(domain, cuk, cid, g || 'highlights', page);
       const headers = {
-        'User-Agent': UA,
+        'User-Agent': UA_CHROME,
         Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
         Referer: referer,
         'X-Requested-With': 'XMLHttpRequest',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
       };
       if (cookie) headers.Cookie = cookie;
       const r = await fetch(loadUrl, { headers, redirect: 'follow' });
@@ -261,53 +285,70 @@ async function loadPhotosForGalleryPage(pageUrl, overrideCid, gsFromPaste) {
     if (got) {
       return { photos: got.photos, cid, cuk, usedGs: got.usedGs };
     }
-    const first = await fetch(ref, {
-      headers: {
-        'User-Agent': UA,
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-    });
-    if (first.ok) {
-      const html = await first.text();
-      const cookie = setCookieHeader(first);
-      const gs = !isLikelyCloudflareBlock(html) ? extractGsFromHtml(html) : null;
-      const attempts1 = buildGsAttempts(gsFromPaste || gs);
-      got = await mergeLoadPhotosPages(domain, cuk, cid, cookie, ref, attempts1);
-      if (got) {
-        return { photos: got.photos, cid, cuk, usedGs: got.usedGs };
+    try {
+      const first = await fetch(ref, { headers: browserNavigationHeaders(UA_CHROME), redirect: 'follow' });
+      if (first.ok) {
+        const html = await first.text();
+        const cookie = setCookieHeader(first);
+        const gs = !isLikelyCloudflareBlock(html) ? extractGsFromHtml(html) : null;
+        const attempts1 = buildGsAttempts(gsFromPaste || gs);
+        got = await mergeLoadPhotosPages(domain, cuk, cid, cookie, ref, attempts1);
+        if (got) {
+          return { photos: got.photos, cid, cuk, usedGs: got.usedGs };
+        }
       }
-    }
+    } catch { /* fallback ao erro genérico */ }
     throw new Error(
       'Com o «cid» indicado, loadphotos ainda não devolveu fotos. Confirme o cid (Rede do browser) e se a galeria é pública; às vezes a galeria correcta repete outro gs= no URL.',
     );
   }
 
-  const first = await fetch(ref, {
-    headers: {
-      'User-Agent': UA,
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    },
-  });
-  if (!first.ok) throw new Error(`Falha ao abrir a galeria (${first.status})`);
+  const strategies = [
+    { ua: UA_CHROME, headers: browserNavigationHeaders(UA_CHROME) },
+    { ua: UA_FIREFOX, headers: browserNavigationHeaders(UA_FIREFOX) },
+    { ua: UA_FIREFOX, headers: { 'User-Agent': UA_FIREFOX, Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' } },
+  ];
 
-  const html = await first.text();
-  if (isLikelyCloudflareBlock(html)) {
-    throw new Error(
-      'A origem bloqueou o acesso automático (Cloudflare). No campo abaixo, cole o «cid» do pedido loadphotos (separador Rede) e tente de novo; sem o cid não é possível listar as fotos a partir do servidor.',
-    );
+  let lastHtml = '';
+  let lastCookie = '';
+  let blocked = false;
+
+  for (const strat of strategies) {
+    try {
+      const res = await fetch(ref, { headers: strat.headers, redirect: 'follow' });
+      if (!res.ok) continue;
+      const html = await res.text();
+      if (isLikelyCloudflareBlock(html)) {
+        blocked = true;
+        continue;
+      }
+      lastHtml = html;
+      lastCookie = setCookieHeader(res);
+      break;
+    } catch {
+      continue;
+    }
   }
 
-  const cookie = setCookieHeader(first);
-  const cid = extractCid(html);
+  if (!lastHtml && blocked) {
+    throw new Error(
+      'A origem bloqueou o acesso automático (Cloudflare). Cole o «cid» do pedido loadphotos no campo abaixo e tente de novo.',
+    );
+  }
+  if (!lastHtml) {
+    throw new Error('Falha ao abrir a galeria. Verifique se o link é público.');
+  }
+
+  const cid = extractCid(lastHtml);
   if (!cid) {
     throw new Error(
-      'Não foi possível obter o ID da coleção (cid) da página. No separador Rede, localize o pedido «loadphotos» e copie o parâmetro «cid» para o campo opcional abaixo do URL Pixieset no admin.',
+      'Não foi possível extrair o cid da página. Cole o «cid» do pedido loadphotos no campo abaixo.',
     );
   }
 
-  const gs = extractGsFromHtml(html);
+  const gs = extractGsFromHtml(lastHtml);
   const attempts = buildGsAttempts(gsFromPaste || gs);
-  const got = await mergeLoadPhotosPages(domain, cuk, cid, cookie, ref, attempts);
+  const got = await mergeLoadPhotosPages(domain, cuk, cid, lastCookie, ref, attempts);
   if (got) {
     return { photos: got.photos, cid, cuk, usedGs: got.usedGs };
   }

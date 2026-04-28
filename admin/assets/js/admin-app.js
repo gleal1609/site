@@ -169,6 +169,7 @@ function adminApp() {
     /** Importação Pixieset — capa + slideshow (Worker resolve + proxy) */
     pixiesetBusy: false,
     pixiesetCidOverride: '',
+    pixiesetCidNeeded: false,
     _ytUrlDebounce: null,
     _ytDurationPoll: null,
 
@@ -514,6 +515,39 @@ function adminApp() {
       return parts.length ? parts.join(' · ') : '';
     },
 
+    normalizeHomeOrder() {
+      const cols = this.visibleHomeProjectCols;
+      let total = 0;
+      for (let c = 0; c < 5; c++) {
+        const items = cols[c];
+        items.forEach((p, i) => {
+          const colNum = c + 1;
+          const slug = p._slug;
+          p.order = i;
+          p.home_col = colNum;
+          const ex = this.projectDrafts[slug];
+          const pl = { order: i, home_col: colNum };
+          if (ex) {
+            ex.payload = { ...ex.payload, ...pl };
+          } else {
+            this.projectDrafts[slug] = {
+              payload: this._projectToPayload(p, pl),
+              thumbFile: null,
+              videoFile: null,
+              isNew: false,
+              version: p.version,
+            };
+          }
+          total++;
+        });
+      }
+      this.$nextTick(() => this._initMasonry());
+      this._toast(
+        `Ordem normalizada para ${total} projeto(s) em 5 colunas. Publique para salvar.`,
+        'success',
+      );
+    },
+
     randomizeHomeSizes() {
       const targets = this.visibleHomeProjects;
       if (!targets.length) {
@@ -742,6 +776,7 @@ function adminApp() {
       this.formDirty = false;
       this.ytPreviewPortrait = false;
       this.pixiesetCidOverride = '';
+      this.pixiesetCidNeeded = false;
       this._clearUploads();
     },
 
@@ -1217,11 +1252,43 @@ function adminApp() {
         }
         if (typeof p.mute === 'function') p.mute();
         p.seekTo(this.ytScrubTime, true);
+        this._autoPauseOnFirstFrame(p);
       } catch (e) {
-        this._toast('YouTube: ' + (e.message || 'falha ao carregar o leitor'), 'error');
+        this._toast('YouTube: ' + (e.message || 'não foi possível carregar o vídeo'), 'error');
       } finally {
         this.ytPlayerIniting = false;
       }
+    },
+
+    /**
+     * Espera o player renderizar o primeiro frame (estado PLAYING) e então pausa.
+     * Isso garante que o usuário veja um quadro estático em vez de tela preta.
+     * O listener se auto-remove após pausar ou após 8 s (timeout de segurança).
+     */
+    _autoPauseOnFirstFrame(player) {
+      const p = player;
+      if (!p) return;
+      const YTApi = globalThis.YT;
+      if (!YTApi || !YTApi.PlayerState) return;
+
+      let done = false;
+      const handler = (ev) => {
+        if (done) return;
+        if (ev && ev.data === YTApi.PlayerState.PLAYING) {
+          done = true;
+          try { p.pauseVideo(); } catch { /* */ }
+          try { p.removeEventListener('onStateChange', handler); } catch { /* */ }
+        }
+      };
+      try {
+        p.addEventListener('onStateChange', handler);
+      } catch { /* */ }
+
+      setTimeout(() => {
+        if (done) return;
+        done = true;
+        try { p.removeEventListener('onStateChange', handler); } catch { /* */ }
+      }, 8000);
     },
 
     onYtScrubInput() {
@@ -1254,7 +1321,7 @@ function adminApp() {
       if (this.ytIngestBusy) return;
       if (this.isNew) {
         this._toast(
-          'Guarde e publique o projeto antes de gerar capa e prévia.',
+          'Salve e publique o projeto antes de gerar a capa e a prévia.',
           'warning',
         );
         return;
@@ -1277,8 +1344,8 @@ function adminApp() {
         !!this.projectDrafts[slug];
       if (needsPublish) {
         const ok = confirm(
-          'Há alterações não publicadas. Publicar agora antes de gerar capa e prévia?\n' +
-            'Pode clicar em «Cancelar» para abortar.',
+          'Há alterações não publicadas. Publicar agora antes de gerar a capa e a prévia?\n' +
+            'Você pode clicar em «Cancelar» para voltar.',
         );
         if (!ok) return;
         try {
@@ -1308,12 +1375,12 @@ function adminApp() {
           }
         }
         this._toast(
-          'Processamento iniciado no GitHub Actions. Demora 2–5 min. Use o link «Ver execuções» ao lado do botão para acompanhar o log; reabra o projeto depois para ver a capa/prévia novas.',
+          'Processamento iniciado (GitHub Actions). Em geral leva de 2 a 5 minutos. Use «Ver execuções no GitHub» para acompanhar; depois reabra o projeto para ver a capa e a prévia atualizadas.',
           'success',
         );
       } catch (e) {
         this._toast(
-          'Falha a iniciar o processamento: ' + (e.message || String(e)),
+          'Falha ao iniciar o processamento: ' + (e.message || String(e)),
           'error',
         );
       } finally {
@@ -1357,6 +1424,7 @@ function adminApp() {
       this.pixiesetBusy = true;
       try {
         const data = await this._api.pixiesetResolve(galleryUrl, this.pixiesetCidOverride);
+        this.pixiesetCidNeeded = false;
         if (which === 'thumb' || which === 'both') {
           if (!data.cover) {
             throw new Error('Não foi possível obter a imagem de capa.');
@@ -1403,10 +1471,17 @@ function adminApp() {
         this._toast(msg, 'success');
         this.formDirty = true;
       } catch (e) {
-        this._toast(
-          (e && e.message) || 'Falha ao importar do Pixieset. Pode indicar o «cid» opcional (Rede → loadphotos).',
-          'error',
-        );
+        const msg = (e && e.message) || '';
+        const isCidError = /cid|cloudflare|coleção|loadphotos/i.test(msg);
+        if (isCidError && !this.pixiesetCidOverride) {
+          this.pixiesetCidNeeded = true;
+          this._toast(
+            'Não foi possível acessar a galeria automaticamente. Cole abaixo a URL do pedido «loadphotos» (ou só o número cid) e tente de novo.',
+            'warning',
+          );
+        } else {
+          this._toast(msg || 'Falha ao importar do Pixieset.', 'error');
+        }
       } finally {
         this.pixiesetBusy = false;
       }
@@ -1460,6 +1535,129 @@ function adminApp() {
       return out;
     },
 
+    _homeGridClickHandler: null,
+    _homeGridKeyHandler: null,
+
+    _escHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    },
+
+    _escAttr(s) {
+      return String(s)
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    },
+
+    _renderHomeItemHtml(p, colNum) {
+      const size = p.home_size || '1x1';
+      const order = p.order != null ? p.order : 0;
+      const slug = p._slug || '';
+      const title = this._escHtml(p.title || '');
+      const client = this._escHtml(p.client || '');
+      const thumb = p.thumbnail || '';
+      const hasDraft = !!this.projectDrafts[slug];
+      const sizeLabel = size === '1x1.5' ? '1\u00d71,5' : size.replace('x', '\u00d7');
+
+      const thumbHtml = thumb
+        ? '<img src="' + this._escAttr(thumb) + '" alt="' + this._escAttr(p.title || '') + '" loading="lazy" draggable="false"/>'
+        : '<div class="admin-project-item__ph" aria-hidden="true">Sem imagem</div>';
+
+      const clientHtml = client
+        ? '<p class="admin-project-item__client">' + client + '</p>'
+        : '';
+
+      const draftDisplay = hasDraft ? '' : 'display:none';
+
+      const dragHandleSvg = '<svg viewBox="0 0 16 16"><circle cx="4" cy="2" r="1.5"/><circle cx="4" cy="8" r="1.5"/><circle cx="4" cy="14" r="1.5"/><circle cx="12" cy="2" r="1.5"/><circle cx="12" cy="8" r="1.5"/><circle cx="12" cy="14" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="14" r="1.5"/></svg>';
+
+      const draftBadge = hasDraft
+        ? '<span class="gc-badge draft">Rascunho</span>'
+        : '';
+
+      return '<a href="#" class="admin-project-item"'
+        + ' data-size="' + this._escAttr(size) + '"'
+        + ' data-order="' + order + '"'
+        + ' data-home-col="' + colNum + '"'
+        + ' data-slug="' + this._escAttr(slug) + '"'
+        + ' draggable="false"'
+        + ' role="button"'
+        + ' aria-label="' + this._escAttr(p.title || '') + '"'
+        + ' tabindex="0">'
+        + '<div class="admin-project-item__meta-badges" aria-hidden="true">'
+        + '<span class="gc-badge order">#' + order + '</span>'
+        + '<span class="gc-badge home">C' + colNum + '</span>'
+        + '<span class="gc-badge size">' + sizeLabel + '</span>'
+        + draftBadge
+        + '</div>'
+        + '<div class="admin-project-item__drag-handle" title="Arrastar">' + dragHandleSvg + '</div>'
+        + '<div class="admin-project-item__thumb">' + thumbHtml + '</div>'
+        + '<div class="admin-project-item__overlay">'
+        + '<h3 class="admin-project-item__title">' + title + '</h3>'
+        + clientHtml
+        + '</div>'
+        + '</a>';
+    },
+
+    _renderHomeGrid() {
+      const root = document.getElementById('admin-masonry-cols');
+      if (!root) return;
+      const colEls = root.querySelectorAll('.admin-projects-col');
+      if (colEls.length !== 5) return;
+
+      const cols = this.visibleHomeProjectCols;
+      for (let c = 0; c < 5; c++) {
+        const items = cols[c] || [];
+        const colNum = c + 1;
+        colEls[c].innerHTML = items.map((p) => this._renderHomeItemHtml(p, colNum)).join('');
+      }
+    },
+
+    _setupHomeGridClickHandler() {
+      const root = document.getElementById('admin-masonry-cols');
+      if (!root) return;
+      this._removeHomeGridClickHandler();
+
+      this._homeGridClickHandler = (e) => {
+        if (e.target.closest('.admin-project-item__drag-handle')) return;
+        const item = e.target.closest('.admin-project-item');
+        if (!item) return;
+        e.preventDefault();
+        const slug = item.getAttribute('data-slug');
+        if (!slug) return;
+        const p = this.projects.find((x) => x._slug === slug);
+        if (p) this.openEditor(p);
+      };
+
+      this._homeGridKeyHandler = (e) => {
+        if (e.key !== 'Enter') return;
+        const item = e.target.closest('.admin-project-item');
+        if (!item) return;
+        e.preventDefault();
+        const slug = item.getAttribute('data-slug');
+        if (!slug) return;
+        const p = this.projects.find((x) => x._slug === slug);
+        if (p) this.openEditor(p);
+      };
+
+      root.addEventListener('click', this._homeGridClickHandler);
+      root.addEventListener('keydown', this._homeGridKeyHandler);
+    },
+
+    _removeHomeGridClickHandler() {
+      const root = document.getElementById('admin-masonry-cols');
+      if (!root) return;
+      if (this._homeGridClickHandler) {
+        root.removeEventListener('click', this._homeGridClickHandler);
+        this._homeGridClickHandler = null;
+      }
+      if (this._homeGridKeyHandler) {
+        root.removeEventListener('keydown', this._homeGridKeyHandler);
+        this._homeGridKeyHandler = null;
+      }
+    },
+
     _initMasonry() {
       const cols = document.getElementById('admin-masonry-cols');
       if (!cols) {
@@ -1473,6 +1671,9 @@ function adminApp() {
       this._destroyMasonry();
 
       this.$nextTick(() => {
+        this._renderHomeGrid();
+        this._setupHomeGridClickHandler();
+
         const allEls = Array.from(cols.querySelectorAll('.admin-project-item'));
         if (!allEls.length) {
           this.masonryReady = true;
@@ -1489,9 +1690,27 @@ function adminApp() {
         colEls.forEach((cel) => {
           const s = Sortable.create(cel, {
             group: 'reverso-home-cols',
-            animation: 160,
+            handle: '.admin-project-item__drag-handle',
+            animation: 250,
+            easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
             draggable: '.admin-project-item',
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            dragClass: 'sortable-drag',
+            forceFallback: true,
+            fallbackClass: 'sortable-fallback',
+            fallbackOnBody: true,
+            fallbackTolerance: 2,
+            swapThreshold: 0.55,
+            emptyInsertThreshold: 200,
+            scrollSensitivity: 120,
+            scrollSpeed: 14,
+            bubbleScroll: true,
+            onStart: () => {
+              document.body.classList.add('admin-home-sorting');
+            },
             onEnd: () => {
+              document.body.classList.remove('admin-home-sorting');
               this._applyHomeOrderFromSortable();
               this._reapplyAdminMasonrySizes();
             },
@@ -1505,7 +1724,7 @@ function adminApp() {
           let timer = null;
           this._masonryResizeBound = () => {
             clearTimeout(timer);
-            timer = setTimeout(() => this._relayoutMasonry(), 200);
+            timer = setTimeout(() => this._reapplyAdminMasonrySizes(), 200);
           };
           window.addEventListener('resize', this._masonryResizeBound);
         }
@@ -1518,13 +1737,28 @@ function adminApp() {
       const colEls = root.querySelectorAll('.admin-projects-col');
       colEls.forEach((el, cIdx) => {
         if (cIdx < 0 || cIdx > 4) return;
-        const colNum = cIdx + 1; /* 1–5 */
+        const colNum = cIdx + 1;
         const links = el.querySelectorAll('.admin-project-item');
         links.forEach((node, i) => {
           const slug = node.getAttribute('data-slug');
           if (!slug) return;
+
           node.setAttribute('data-order', String(i));
           node.setAttribute('data-home-col', String(colNum));
+
+          const orderBadge = node.querySelector('.gc-badge.order');
+          if (orderBadge) orderBadge.textContent = '#' + i;
+          const homeBadge = node.querySelector('.gc-badge.home');
+          if (homeBadge) homeBadge.textContent = 'C' + colNum;
+
+          const badges = node.querySelector('.admin-project-item__meta-badges');
+          if (badges && !badges.querySelector('.gc-badge.draft')) {
+            const d = document.createElement('span');
+            d.className = 'gc-badge draft';
+            d.textContent = 'Rascunho';
+            badges.appendChild(d);
+          }
+
           const p = this.projects.find((x) => x._slug === slug);
           if (p) {
             p.order = i;
@@ -1558,10 +1792,13 @@ function adminApp() {
 
     _relayoutMasonry() {
       if (this.view !== 'home') return;
-      this._reapplyAdminMasonrySizes();
+      this._destroyMasonry();
+      this._initMasonry();
     },
 
     _destroyMasonry() {
+      document.body.classList.remove('admin-home-sorting');
+      this._removeHomeGridClickHandler();
       this._homeSortableInstances.forEach((s) => {
         try { s.destroy(); } catch (_) {}
       });

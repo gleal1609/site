@@ -79,7 +79,7 @@ function createPlayer(elementId, videoId, options) {
     clearPlayerHostById(elementId);
     return new Promise((resolve, reject) => {
       const to = setTimeout(() => {
-        reject(new Error('tempo esgotado a carregar o leitor (YouTube)'));
+        reject(new Error('Tempo esgotado ao carregar o player do YouTube.'));
       }, timeoutMs);
       const pageOrigin =
         typeof window !== 'undefined' && window.location && window.location.origin
@@ -109,7 +109,7 @@ function createPlayer(elementId, videoId, options) {
           },
           onError: (ev) => {
             clearTimeout(to);
-            const err = new Error(`YouTube player: código ${ev.data}`);
+            const err = new Error(`Player do YouTube: código de erro ${ev.data}`);
             if (o.onError) {
               try {
                 o.onError(err);
