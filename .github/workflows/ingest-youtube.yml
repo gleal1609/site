@@ -6,6 +6,10 @@
 # via `/api/projects/youtube-manifest`, extrai os ficheiros com `yt-dlp` + `ffmpeg`,
 # envia para R2 e grava as chaves em D1 via `/api/projects/media-keys`.
 #
+# Se o YouTube bloquear o download do vídeo (bot-check em IPs de datacenter), o script
+# faz fallback para a thumbnail do CDN do YouTube. O workflow NÃO falha — o projeto
+# fica com capa genérica até o próximo retry.
+#
 # Pode também ser corrido manualmente em «Actions → Ingest YouTube media → Run workflow»,
 # indicando o slug. Uso ideal: < 5 min por projeto; usa o plano gratuito do GitHub Actions.
 
@@ -22,7 +26,6 @@ on:
         type: string
 
 concurrency:
-  # Evita duas ingestões simultâneas para o mesmo slug (uploads a sobrepor-se).
   group: ingest-youtube-${{ github.event.client_payload.slug || inputs.slug }}
   cancel-in-progress: false
 
@@ -35,7 +38,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # Repo secrets — ver instruções em docs/cms-ingest-youtube.md
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -77,13 +79,34 @@ jobs:
           cache: "npm"
           cache-dependency-path: scripts/package-lock.json
 
-      - name: Install yt-dlp (ffmpeg já vem no runner)
+      - name: Install yt-dlp + PO Token provider
         shell: bash
         run: |
           set -euo pipefail
-          # Versão recente tem correcções para o desafio "Sign in to confirm you're not a bot"
-          python3 -m pip install --user --upgrade "yt-dlp>=2025.01.01"
+          # Nightly tem os fixes mais recentes para YouTube
+          python3 -m pip install --user --upgrade "yt-dlp[default]"
+          # bgutil PO Token provider — gera tokens automaticamente, ajuda em alguns cenários
+          python3 -m pip install --user --upgrade bgutil-ytdlp-pot-provider
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install Deno (runtime para PO Token provider)
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Setup bgutil PO Token provider (script mode)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$HOME"
+          BGUTIL_VERSION=$(python3 -c "import importlib.metadata; print(importlib.metadata.version('bgutil-ytdlp-pot-provider'))")
+          echo "bgutil-ytdlp-pot-provider version: $BGUTIL_VERSION"
+          git clone --single-branch --branch "$BGUTIL_VERSION" \
+            https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git 2>/dev/null || \
+            git clone --single-branch https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git
+          cd bgutil-ytdlp-pot-provider/server/
+          npm install
+          npx tsc
 
       - name: Show toolchain versions
         shell: bash
@@ -91,7 +114,9 @@ jobs:
           set -euo pipefail
           which yt-dlp && yt-dlp --version
           which ffmpeg && ffmpeg -version | head -n 1
+          which deno && deno --version
           node --version
+          python3 -c "import bgutil_ytdlp_pot_provider; print('bgutil POT provider: OK')" || echo "bgutil POT provider: not loaded"
 
       - name: Install scripts deps
         working-directory: scripts
@@ -112,7 +137,7 @@ jobs:
             echo "file=$file" >> "$GITHUB_OUTPUT"
             echo "YOUTUBE_COOKIES presente — yt-dlp vai tentar com --cookies se preciso."
           else
-            echo "Sem YOUTUBE_COOKIES — yt-dlp vai usar só clientes alternativos (mweb, tv_embedded)."
+            echo "Sem YOUTUBE_COOKIES — yt-dlp vai usar clientes alternativos + PO Token provider."
           fi
 
       - name: Ingest (yt-dlp → ffmpeg → R2 → D1)

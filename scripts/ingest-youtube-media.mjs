@@ -60,11 +60,9 @@ function sleep(ms) {
 /**
  * Faz download do vídeo do YouTube. Em runners de datacenter (ex.: GitHub Actions)
  * o YouTube exige "Sign in to confirm you're not a bot". Estratégia:
- *   1) Tenta clientes alternativos (`mweb`, `tv_embedded`) que muitas vezes passam
- *      o desafio sem credenciais.
- *   2) Se existir um ficheiro de cookies em `YT_DLP_COOKIES_FILE` (`cookies.txt`
- *      formato Netscape), tenta também com `--cookies`.
- *   3) Se tudo falhar, relança o último erro.
+ *   1) Tenta vários clientes e combinações de extractor-args.
+ *   2) Se existir um ficheiro de cookies em `YT_DLP_COOKIES_FILE`, tenta com `--cookies`.
+ *   3) Se tudo falhar, retorna null (o caller decide o fallback).
  */
 async function downloadVideo(dir, url) {
   const out = join(dir, 'source.%(ext)s');
@@ -83,7 +81,9 @@ async function downloadVideo(dir, url) {
 
   const cookiesFile = (process.env.YT_DLP_COOKIES_FILE || '').trim();
   const attempts = [
+    ['--extractor-args', 'youtube:player_client=web_embedded'],
     ['--extractor-args', 'youtube:player_client=mweb,tv_embedded'],
+    ['--extractor-args', 'youtube:player_client=web_safari,mweb'],
     ['--extractor-args', 'youtube:player_client=android,web'],
     [],
   ];
@@ -93,11 +93,10 @@ async function downloadVideo(dir, url) {
       '--cookies',
       cookiesFile,
       '--extractor-args',
-      'youtube:player_client=mweb',
+      'youtube:player_client=web,mweb',
     ]);
   }
 
-  let lastErr = null;
   for (const extra of attempts) {
     try {
       await execFileAsync(
@@ -111,13 +110,58 @@ async function downloadVideo(dir, url) {
       if (vid) return join(dir, vid);
       throw new Error('yt-dlp não produziu ficheiro source.*');
     } catch (e) {
-      lastErr = e;
       const msg = (e && (e.stderr || e.message)) || String(e);
       console.warn('[yt-dlp] tentativa falhou:', extra.join(' ') || '(default)');
       console.warn('         ', String(msg).split('\n').slice(-2).join(' | '));
     }
   }
-  throw lastErr || new Error('yt-dlp: todas as tentativas falharam');
+  return null;
+}
+
+function extractVideoId(url) {
+  if (!url || typeof url !== 'string') return null;
+  const u = url.trim();
+  let m = u.match(/youtube\.com\/shorts\/([^?&/]+)/i);
+  if (m) return m[1];
+  m = u.match(/[?&]v=([^&]+)/i);
+  if (m) return m[1];
+  m = u.match(/youtu\.be\/([^?&/]+)/i);
+  if (m) return m[1];
+  return null;
+}
+
+/**
+ * Fallback: baixa thumbnail do CDN do YouTube (sem timestamp personalizado)
+ * e grava em R2. Não precisa de yt-dlp — funciona sempre.
+ */
+async function downloadYoutubeCdnThumbnail(dir, youtubeUrl) {
+  const videoId = extractVideoId(youtubeUrl);
+  if (!videoId) return null;
+  const variants = [
+    `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+    `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+    `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+  ];
+  for (const thumbUrl of variants) {
+    try {
+      const res = await fetch(thumbUrl, {
+        headers: { 'User-Agent': 'ReversoCMS/1.0' },
+        redirect: 'follow',
+      });
+      if (!res.ok) continue;
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.startsWith('image/')) continue;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.byteLength < 2500) continue;
+      const { writeFile } = await import('fs/promises');
+      const outPath = join(dir, 'cdn-thumb.jpg');
+      await writeFile(outPath, buf);
+      return outPath;
+    } catch (e) {
+      console.warn('[cdn-thumb] falhou para', thumbUrl, e.message);
+    }
+  }
+  return null;
 }
 
 /** -ss antes de -i seria input seek; após -i o FFmpeg procura o instante. Semântica: instante aprox. em segundos. */
@@ -195,9 +239,33 @@ async function notifyWorker(slug, thumbKey, hoverKey) {
   return JSON.parse(text);
 }
 
+async function notifyWorkerPartial(slug, thumbKey) {
+  const url = `${WORKER_BASE}/api/projects/media-keys`;
+  const body = { slug, thumbnail: thumbKey };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${BUILD_TOKEN}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Worker ${res.status}: ${text}`);
+  }
+  return JSON.parse(text);
+}
+
 /**
  * @param {object} [opts] — campos D1: youtube_thumb_time_sec, youtube_preview_start_sec (de preferência
  * escolhidos no admin; omissão = 0, comportamento clássico: capa 0s, prévia 0–5s).
+ *
+ * Comportamento resiliente:
+ *   - Se yt-dlp conseguir baixar o vídeo → gera poster + hover com ffmpeg (resultado completo).
+ *   - Se yt-dlp falhar (bot-check do YouTube) → baixa thumbnail do CDN do YouTube como
+ *     fallback (sem timestamp personalizado, sem hover). O workflow NÃO falha.
  */
 export async function ingestOne(slug, youtubeUrl, opts = {}) {
   const thumbT = Math.max(0, Number(opts.youtube_thumb_time_sec) || 0);
@@ -215,18 +283,37 @@ export async function ingestOne(slug, youtubeUrl, opts = {}) {
   try {
     console.log('[1/5] yt-dlp…');
     const videoPath = await downloadVideo(dir, youtubeUrl);
-    console.log('[2/5] ffmpeg capa (frame @', thumbT, 's)…');
-    await extractPoster(ffmpegBin(), videoPath, posterPath, thumbT);
-    console.log('[3/5] ffmpeg hover (5s a partir de', prevS, 's)…');
-    await extractHover(ffmpegBin(), videoPath, hoverPath, prevS, 5);
-    console.log('[4/5] R2 upload…');
-    await putR2(thumbKey, posterPath, 'image/jpeg');
-    await putR2(hoverKey, hoverPath, 'video/mp4');
-    console.log('[5/5] Worker D1…');
-    const out = await notifyWorker(slug, thumbKey, hoverKey);
-    console.log('OK:', out);
-    console.log('Chaves:', thumbKey, hoverKey);
-    return { thumbKey, hoverKey, worker: out };
+
+    if (videoPath) {
+      console.log('[2/5] ffmpeg capa (frame @', thumbT, 's)…');
+      await extractPoster(ffmpegBin(), videoPath, posterPath, thumbT);
+      console.log('[3/5] ffmpeg hover (5s a partir de', prevS, 's)…');
+      await extractHover(ffmpegBin(), videoPath, hoverPath, prevS, 5);
+      console.log('[4/5] R2 upload (poster + hover)…');
+      await putR2(thumbKey, posterPath, 'image/jpeg');
+      await putR2(hoverKey, hoverPath, 'video/mp4');
+      console.log('[5/5] Worker D1…');
+      const out = await notifyWorker(slug, thumbKey, hoverKey);
+      console.log('OK (completo):', out);
+      console.log('Chaves:', thumbKey, hoverKey);
+      return { thumbKey, hoverKey, worker: out, mode: 'full' };
+    }
+
+    console.warn('\n⚠  yt-dlp falhou em todas as tentativas. Usando fallback: thumbnail do CDN do YouTube.');
+    console.log('[fallback 1/3] Baixando thumbnail do CDN…');
+    const cdnThumbPath = await downloadYoutubeCdnThumbnail(dir, youtubeUrl);
+    if (!cdnThumbPath) {
+      throw new Error('Fallback também falhou: não foi possível baixar thumbnail do CDN do YouTube.');
+    }
+    console.log('[fallback 2/3] R2 upload (só poster)…');
+    await putR2(thumbKey, cdnThumbPath, 'image/jpeg');
+    console.log('[fallback 3/3] Worker D1 (só thumbnail, sem hover)…');
+    const out = await notifyWorkerPartial(slug, thumbKey);
+    console.log('OK (fallback — só thumbnail):', out);
+    console.log('Chave:', thumbKey);
+    console.warn('⚠  O vídeo de hover (5s) NÃO foi gerado. O YouTube bloqueou o download do vídeo.');
+    console.warn('   Para gerar o hover, tente novamente mais tarde ou configure YOUTUBE_COOKIES.');
+    return { thumbKey, hoverKey: null, worker: out, mode: 'fallback' };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -260,11 +347,15 @@ async function runAll() {
     const youtubeUrl = row.youtube_url;
     console.log(`\n========== [${i + 1}/${projects.length}] ${slug} ==========`);
     try {
-      await ingestOne(slug, youtubeUrl, {
+      const result = await ingestOne(slug, youtubeUrl, {
         youtube_thumb_time_sec: row.youtube_thumb_time_sec,
         youtube_preview_start_sec: row.youtube_preview_start_sec,
       });
-      out.ok.push(slug);
+      if (result.mode === 'fallback') {
+        out.ok.push(`${slug} (fallback: só thumbnail)`);
+      } else {
+        out.ok.push(slug);
+      }
     } catch (e) {
       const msg = e.message || String(e);
       console.error('FALHA:', msg);
