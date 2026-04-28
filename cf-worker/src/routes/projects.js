@@ -421,11 +421,11 @@ export async function handleMediaKeysSync(request, env, ctx) {
   const data = await request.json().catch(() => ({}));
   if (!data.slug || typeof data.slug !== 'string') return error('slug required', 400);
   if (!SLUG_PATH_RE.test(data.slug)) return error('invalid slug', 400);
-  if (typeof data.thumbnail !== 'string' || !data.thumbnail.startsWith('projects/')) {
-    return error('thumbnail must be an R2 key starting with projects/', 400);
-  }
-  if (typeof data.hover_preview !== 'string' || !data.hover_preview.startsWith('projects/')) {
-    return error('hover_preview must be an R2 key starting with projects/', 400);
+
+  const hasThumb = typeof data.thumbnail === 'string' && data.thumbnail.startsWith('projects/');
+  const hasHover = typeof data.hover_preview === 'string' && data.hover_preview.startsWith('projects/');
+  if (!hasThumb && !hasHover) {
+    return error('at least one of thumbnail or hover_preview (R2 keys) is required', 400);
   }
 
   const row = await env.DB.prepare('SELECT slug FROM projects WHERE slug = ?')
@@ -433,21 +433,30 @@ export async function handleMediaKeysSync(request, env, ctx) {
     .first();
   if (!row) return error('Project not found', 404);
 
+  const sets = [];
+  const vals = [];
+  if (hasThumb) { sets.push('thumbnail = ?'); vals.push(data.thumbnail); }
+  if (hasHover) { sets.push('hover_preview = ?'); vals.push(data.hover_preview); }
+  sets.push("updated_at = datetime('now')");
+  sets.push('version = version + 1');
+  vals.push(data.slug);
+
   await env.DB.prepare(
-    `UPDATE projects SET thumbnail = ?, hover_preview = ?, updated_at = datetime('now'),
-     version = version + 1 WHERE slug = ?`,
-  )
-    .bind(data.thumbnail, data.hover_preview, data.slug)
-    .run();
+    `UPDATE projects SET ${sets.join(', ')} WHERE slug = ?`,
+  ).bind(...vals).run();
+
+  const diff = {};
+  if (hasThumb) diff.thumbnail = data.thumbnail;
+  if (hasHover) diff.hover_preview = data.hover_preview;
 
   logAudit(ctx, env.DB, {
     action: 'media_keys_sync',
     targetType: 'project',
     targetId: data.slug,
-    diff: { thumbnail: data.thumbnail, hover_preview: data.hover_preview },
+    diff,
   });
 
-  return json({ ok: true, slug: data.slug });
+  return json({ ok: true, slug: data.slug, updated: Object.keys(diff) });
 }
 
 /** Lista slug + youtube_url para scripts locais (ingest em lote). Auth: token de build. */
