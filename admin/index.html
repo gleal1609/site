@@ -85,6 +85,13 @@
         <button type="button"
                 x-show="view === 'home'"
                 class="btn btn-secondary"
+                @click="normalizeHomeOrder()"
+                title="Recalcular valores de ordem (0, 1, 2, …) por coluna e gravar em rascunho">
+          Normalizar ordem
+        </button>
+        <button type="button"
+                x-show="view === 'home'"
+                class="btn btn-secondary"
                 @click="randomizeHomeSizes()"
                 title="Aleatorizar tamanhos 1x1/1x1,5/1x2 e ordem (rascunho) — projetos com «Exibir na Home»">
           Aleatorizar formatos
@@ -115,8 +122,8 @@
           <div class="projetos-header__text">
             <h2 class="projetos-title">Grelha da Home</h2>
             <p class="projetos-hint">
-              Só entram projectos com «Exibir na Home» (editor). Cada coluna é uma pilha
-              (sem buracos). Arraste entre colunas ou dentro da coluna: actualiza
+              Só entram projetos com «Exibir na Home» (editor). Cada coluna é uma pilha
+              (sem buracos). Arraste entre colunas ou dentro da coluna: atualiza
               <em>coluna</em> (1–5) e <em>order</em> (posição na coluna). «Publicar» grava. Formatos: 1×1, 1×1,5, 1×2.
             </p>
           </div>
@@ -124,52 +131,19 @@
 
         <div id="admin-masonry-container" class="admin-masonry-container"
              :class="{ 'is-ready': masonryReady }">
-          <div class="admin-masonry-cols" id="admin-masonry-cols">
-            <template x-for="c in [0,1,2,3,4]" :key="'col'+c">
-              <div class="admin-projects-col" :data-col="c + 1" role="list">
-                <template x-for="p in homeColItems(c)" :key="p._slug">
-                  <a
-                    href="#"
-                    class="admin-project-item"
-                    :data-size="p.home_size || '1x1'"
-                    :data-order="p.order != null ? p.order : 0"
-                    :data-home-col="c + 1"
-                    :data-slug="p._slug"
-                    @click.prevent="openEditor(p)"
-                    role="button"
-                    :aria-label="p.title"
-                    tabindex="0"
-                    @keydown.enter.prevent="openEditor(p)"
-                  >
-                    <div class="admin-project-item__thumb">
-                      <img x-show="p.thumbnail"
-                           :src="p.thumbnail"
-                           :alt="p.title"
-                           loading="lazy" />
-                      <div x-show="!p.thumbnail" class="admin-project-item__ph" aria-hidden="true">
-                        Sem imagem
-                      </div>
-                    </div>
-                    <div class="admin-project-item__overlay">
-                      <h3 class="admin-project-item__title" x-text="p.title"></h3>
-                      <p class="admin-project-item__client"
-                         x-show="p.client"
-                         x-text="p.client"></p>
-                    </div>
-                    <div class="admin-project-item__badges" x-show="hasDraftFor(p._slug)">
-                      <span class="gc-badge draft">Rascunho</span>
-                    </div>
-                  </a>
-                </template>
-              </div>
-            </template>
+          <div class="admin-masonry-cols" id="admin-masonry-cols" x-ignore>
+            <div class="admin-projects-col" data-col="1" role="list"></div>
+            <div class="admin-projects-col" data-col="2" role="list"></div>
+            <div class="admin-projects-col" data-col="3" role="list"></div>
+            <div class="admin-projects-col" data-col="4" role="list"></div>
+            <div class="admin-projects-col" data-col="5" role="list"></div>
           </div>
         </div>
 
         <div x-show="!loading && view === 'home' && !visibleHomeProjects.length" class="empty-state">
-          <p>Nenhum projecto com «Exibir na Home» activo.</p>
+          <p>Nenhum projeto com «Exibir na Home» ativo.</p>
           <p class="empty-state-hint">
-            Abra um projecto no separador <strong>Projetos</strong> e active
+            Abra um projeto na aba <strong>Projetos</strong> e ative
             a opção, ou crie um novo.
           </p>
         </div>
@@ -182,7 +156,7 @@
             <h2 class="projetos-title">Todos os projectos</h2>
             <p class="projetos-hint">
               Ordenados por data (mais recente primeiro). Clique num card
-              para editar — inclui projectos fora da Home.
+              para editar — inclui projetos fora da Home.
             </p>
           </div>
         </div>
@@ -370,21 +344,46 @@
 
           <div class="field-row">
             <div class="field-col field-col--grow">
-              <label class="field-label flex-align">
-                <input type="checkbox" x-model="form.show_on_home" class="checkbox-input" />
-                <span>Exibir na Home</span>
+              <label class="field-label" for="show-on-home-toggle">Exibir na Home</label>
+              <label class="toggle-label">
+                <input id="show-on-home-toggle" type="checkbox" x-model="form.show_on_home" class="toggle-input" />
+                <span class="toggle-switch" aria-hidden="true"></span>
               </label>
-              <p class="field-hint" style="margin:0.35rem 0 0;font-size:0.8rem;color:var(--text-2)">
-                A ordem na grelha da Home é definida na aba <strong>Home</strong> (arrastar).
-              </p>
             </div>
-            <div class="field-col">
-              <label class="field-label">Tamanho na Home</label>
-              <select x-model="form.home_size" class="input">
-                <option value="1x1">1×1</option>
-                <option value="1x1.5">1×1,5</option>
-                <option value="1x2">1×2</option>
-              </select>
+            <div class="field-col field-col--format">
+              <label class="field-label">Formato na Home</label>
+              <div class="format-picker" role="group" aria-label="Formato na grelha da Home">
+                <button
+                  type="button"
+                  class="format-picker__btn"
+                  :class="{ 'format-picker__btn--active': (form.home_size || '1x1') === '1x1' }"
+                  @click="form.home_size = '1x1'"
+                  title="Célula 1×1"
+                >
+                  <span class="format-picker__shape format-picker__shape--1x1" aria-hidden="true"></span>
+                  <span class="format-picker__label">1×1</span>
+                </button>
+                <button
+                  type="button"
+                  class="format-picker__btn"
+                  :class="{ 'format-picker__btn--active': (form.home_size || '1x1') === '1x1.5' }"
+                  @click="form.home_size = '1x1.5'"
+                  title="Célula 1×1,5"
+                >
+                  <span class="format-picker__shape format-picker__shape--1x1-5" aria-hidden="true"></span>
+                  <span class="format-picker__label">1×1,5</span>
+                </button>
+                <button
+                  type="button"
+                  class="format-picker__btn"
+                  :class="{ 'format-picker__btn--active': (form.home_size || '1x1') === '1x2' }"
+                  @click="form.home_size = '1x2'"
+                  title="Célula 1×2"
+                >
+                  <span class="format-picker__shape format-picker__shape--1x2" aria-hidden="true"></span>
+                  <span class="format-picker__label">1×2</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -423,74 +422,68 @@
           <input type="url" x-model="form.youtube_url" class="input" placeholder="https://youtube.com/..." />
 
           <div x-show="!editorLoading && youtubeIframeBlockVisible" x-cloak class="yt-iframe-dock">
-            <h3 class="yt-iframe-dock__title">Pré-visualização (YouTube IFrame API)</h3>
+            <h3 class="yt-iframe-dock__title">Pré-visualização do vídeo (YouTube)</h3>
             <p class="yt-iframe-dock__note">
-              <strong>Instantes no CMS:</strong> use os botões abaixo e depois <strong>Salvar</strong> e
-              <strong>Publicar</strong> — os segundos ficam na base de dados e no manifesto da API.
-              <strong>Ficheiros no site (miniatura e vídeo de hover):</strong> o painel e o deploy <em>não</em>
-              geram novos JPEG/MP4; esses ficheiros estão no R2. Depois de alterar os instantes, é preciso correr
-              localmente <code>node scripts/ingest-youtube-media.mjs</code> (comentários no topo do ficheiro) para extrair nova
-              capa e clip a partir do vídeo do YouTube; sem isso, a Home continua a mostrar os mesmos URLs de mídia.
-              Avisos <code>postMessage</code> do <code>www-widgetapi.js</code> na consola são frequentes e não impedem
-              guardar os tempos.
+              <strong>Passo a passo:</strong> posicione a linha do tempo onde quiser capturar quadros;
+              salve como <em>instante da capa</em> e como <em>início do clipe de 5&nbsp;s</em>; clique em
+              <strong>Gerar capa e prévia</strong>. Em seguida use <strong>Salvar</strong> neste editor e
+              <strong>Publicar</strong> no topo para enviar as alterações ao servidor.
+              O player abre pausado para facilitar a escolha do quadro — use ▶ apenas se precisar assistir ao trecho.
             </p>
             <div class="yt-iframe-dock__row">
               <div class="yt-iframe-dock__col yt-iframe-dock__col--player">
-                <p class="yt-iframe-dock__status" x-show="ytPlayerIniting">A carregar o leitor&hellip;</p>
+                <p class="yt-iframe-dock__status" x-show="ytPlayerIniting">Carregando o vídeo&hellip;</p>
                 <div id="yt-iframe-admin-host" class="yt-iframe-dock__player-host"></div>
               </div>
               <div class="yt-iframe-dock__col yt-iframe-dock__col--tools" x-show="!ytPlayerIniting" x-cloak>
                 <label class="yt-iframe-dock__portrait" x-show="!isYoutubeUrlShortsFormat" x-cloak>
                   <input type="checkbox" x-model="ytPreviewPortrait" @change="_initYoutubePlayerPanel()" />
-                  <span>Pré-visualização 9:16 (vídeo vertical; use se o link não for <code>/shorts/</code>)</span>
+                  <span>Área 9:16 (vídeo vertical; marque se o link não for <code>/shorts/</code>)</span>
                 </label>
-                <label class="field-label">Posição (linha de tempo)</label>
+                <label class="field-label">Posição na linha do tempo</label>
                 <input type="range" class="input yt-iframe-dock__range" min="0"
                        :max="Math.max(0.1, (ytPlayerDuration || 0.1) - 0.02)" step="0.1" x-model.number="ytScrubTime"
                        @input="onYtScrubInput()"
                        :disabled="ytPlayerIniting || (ytPlayerDuration < 0.1)" />
                 <p class="yt-iframe-dock__hint" x-show="ytPlayerDuration < 0.1 && !ytPlayerIniting">
-                  A aguardar duração do vídeo&hellip;
+                  Obtendo duração do vídeo&hellip;
                 </p>
                 <div class="yt-iframe-dock__actions">
                   <button type="button" class="btn btn-secondary"
                           :disabled="ytPlayerIniting || ytPlayerDuration < 0.1"
-                          @click="applyYoutubeThumbTime()">Guardar posição &rarr; instante da capa</button>
+                          @click="applyYoutubeThumbTime()">Salvar posição para capa</button>
                   <button type="button" class="btn btn-secondary"
                           :disabled="ytPlayerIniting || ytPlayerDuration < 0.1"
-                          @click="applyYoutubePreviewStart()">Guardar posição &rarr; início do clip 5s</button>
+                          @click="applyYoutubePreviewStart()">Salvar posição para início do clipe (5&nbsp;s)</button>
                 </div>
                 <div class="yt-iframe-dock__actions" style="margin-top:0.6rem;align-items:center">
                   <button type="button" class="btn btn-primary"
                           :disabled="ytIngestBusy || publishing || isNew || !((form.youtube_url || '').trim())"
                           @click="ingestYoutubeFromPanel()"
-                          title="Dispara um workflow no GitHub Actions que (re)gera capa JPEG e vídeo de hover MP4 a partir do YouTube e grava no R2.">
-                    <span x-show="!ytIngestBusy">Gerar capa e prévia (GitHub Actions)</span>
-                    <span x-show="ytIngestBusy">A iniciar&hellip;</span>
+                          title="Gera de novo a capa (JPEG) e o vídeo de prévia (5 s) a partir do YouTube.">
+                    <span x-show="!ytIngestBusy">Gerar capa e prévia</span>
+                    <span x-show="ytIngestBusy">Iniciando&hellip;</span>
                   </button>
                   <a x-show="ytIngestLastRunUrl" x-cloak
                      :href="ytIngestLastRunUrl" target="_blank" rel="noopener"
                      class="btn btn-secondary"
-                     title="Abre o separador Actions do GitHub numa nova aba para acompanhares o log.">
+                     title="Abre o histórico de execuções no GitHub em uma nova aba.">
                     Ver execuções no GitHub ↗
                   </a>
                   <small x-show="ytIngestLastRunAt" x-cloak
                          style="color:var(--text-2); font-size:0.78rem">
-                    Último disparo: <span x-text="new Date(ytIngestLastRunAt).toLocaleString()"></span>
+                    Última execução: <span x-text="new Date(ytIngestLastRunAt).toLocaleString('pt-BR')"></span>
                   </small>
                 </div>
                 <p class="yt-iframe-dock__hint" x-show="isNew">
-                  Salve e publique o projeto primeiro — a ingestão usa o slug gravado no servidor.
+                  Primeiro salve e publique o projeto — é preciso um slug gravado no servidor.
                 </p>
                 <p class="yt-iframe-dock__hint" x-show="!ytIngestLastRunUrl && !isNew">
-                  Sem execuções registadas neste browser. Depois de clicares em «Gerar capa e prévia»,
-                  aparece aqui o link directo para o log no GitHub.
-                  Também podes abrir <code>Actions → Ingest YouTube media</code> no teu repositório
-                  (mesmo valor configurado em <code>GITHUB_REPO</code> no Worker).
+                  Depois de gerar, o link acima passa a mostrar a última execução neste navegador.
                 </p>
                 <p class="yt-iframe-dock__readout">
-                  Instante capa: <strong x-text="formatYoutubeSec(form.youtube_thumb_time_sec)"></strong>
-                  &nbsp;|&nbsp; Início prévia 5s: <strong x-text="formatYoutubeSec(form.youtube_preview_start_sec)"></strong>
+                  Instante da capa: <strong x-text="formatYoutubeSec(form.youtube_thumb_time_sec)"></strong>
+                  &nbsp;|&nbsp; Início do clipe (5&nbsp;s): <strong x-text="formatYoutubeSec(form.youtube_preview_start_sec)"></strong>
                 </p>
               </div>
             </div>
@@ -498,23 +491,37 @@
 
           <label class="field-label">Pixieset</label>
           <input type="url" x-model="form.pixieset_url" class="input" placeholder="https://…pixieset.com/nome-da-galeria/" />
-          <p class="field-hint" style="margin:0.35rem 0 0.5rem; font-size:0.75rem; color:var(--text-2); line-height:1.45">
-            <strong>cid</strong> (coleção): o rede do browser muitas vezes <em>não</em> mostra um pedido chamado
-            <code>loadphotos</code> (nome na URL pode variar ou o pedido só aparece ao fazer scroll na galeria).
-            Abra o <strong>mesmo URL Pixieset noutro separador</strong> (não dentro de iframe), F12 →
-            <strong>Rede</strong> → tipo <strong>Fetch/XHR</strong> ou «Tudo» → filtre por
-            <code>client</code>, <code>pixieset</code> ou <code>cuk</code> → faça scroll na galeria.
-            Em alternativa: <strong>ver código-fonte da página</strong> (Ctrl+U) e procure
-            <code>"cid":</code> ou <code>cid=</code>.             O <code>cid</code> (número longo) é o <strong>mesmo</strong> em quase todos os pedidos — identifica
-            a coleção. A diferença é o <code>gs=</code> (secção): o <code>loadphotos</code> de ~6–7&nbsp;kB
-            costuma ser o álbum principal; os mais pequenos (ex. <code>gs=evento1</code>) são outro álbum
-            do mesmo <code>cid</code>. Para importar, pode colar só o <strong>número do
-            <code>cid</code> ou a <em>URL completa</em></strong> do pedido certo (o Worker lê
-            o <code>gs</code> a partir do link).
-          </p>
-          <input type="text" x-model="pixiesetCidOverride" class="input"
-                 placeholder="Ex.: 123456789 ou URL completa …?cuk=…&amp;cid=123456789&…"
-                 style="margin-bottom:0.5rem" />
+
+          <div x-show="!pixiesetCidNeeded" x-cloak>
+            <p class="field-hint" style="margin:0.35rem 0 0.5rem; font-size:0.75rem; color:var(--text-2); line-height:1.45">
+              Cole o link público da galeria e clique para gerar a capa e/ou o vídeo.
+            </p>
+          </div>
+
+          <div x-show="pixiesetCidNeeded" x-cloak class="yt-iframe-dock pixieset-manual-dock">
+            <h4 style="margin:0 0 0.5rem; font-size:0.85rem; font-weight:700; color:var(--accent)">
+              Identificação manual necessária
+            </h4>
+            <p class="field-hint" style="margin:0 0 0.5rem; font-size:0.78rem; color:var(--text-2); line-height:1.5">
+              O Pixieset bloqueou o acesso automático. Cole abaixo a <strong>URL completa</strong> do pedido
+              <code>loadphotos</code> da galeria (o sistema extrai o que precisa a partir dessa URL):
+            </p>
+            <ol style="margin:0 0 0.6rem 1.1rem; font-size:0.78rem; color:var(--text-2); line-height:1.65; padding:0">
+              <li>
+                <button type="button" class="btn-link" style="font-size:0.78rem"
+                        @click="window.open((form.pixieset_url || '').trim(), '_blank')"
+                        :disabled="!((form.pixieset_url || '').trim())">Abra a galeria em nova aba ↗</button>
+              </li>
+              <li>Na galeria aberta, pressione <strong>F12</strong> → aba <strong>Rede</strong> → filtre por <code>loadphotos</code></li>
+              <li>Role a página da galeria para que o pedido apareça na lista</li>
+              <li>Clique com o <strong>botão direito</strong> no pedido <code>loadphotos</code> → <strong>Copiar</strong> → <strong>Copiar URL</strong></li>
+              <li>Cole a URL no campo abaixo e use de novo um dos botões <strong>Gerar</strong></li>
+            </ol>
+            <input type="url" x-model="pixiesetCidOverride" class="input"
+                   placeholder="Cole aqui a URL completa do pedido …/client/loadphotos/?cuk=…"
+                   autocomplete="off" />
+          </div>
+
           <div class="editor-pixieset-import">
             <button type="button" class="btn btn-secondary" :disabled="pixiesetBusy || !((form.pixieset_url || '').trim())"
                     @click="generatePixiesetFromLink('thumb')">Gerar miniatura (capa)</button>
@@ -522,6 +529,7 @@
                     @click="generatePixiesetFromLink('video')">Gerar vídeo preview (5 fotos)</button>
             <button type="button" class="btn btn-secondary" :disabled="pixiesetBusy || !((form.pixieset_url || '').trim())"
                     @click="generatePixiesetFromLink('both')">Gerar capa e vídeo</button>
+            <span x-show="pixiesetBusy" class="spinner-sm" style="margin-left:0.3rem"></span>
           </div>
 
           <p class="field-hint" style="margin:0.75rem 0 0.5rem; font-size:0.8rem; color:var(--text-2); line-height:1.45">
@@ -529,19 +537,23 @@
             <strong>«Publicar»</strong> (envio ao servidor e deploy).
           </p>
           <div class="editor-actions">
-            <button type="button" @click="saveProject()" :disabled="publishing"
-                    class="btn btn-primary btn-lg" style="flex:1"
-                    title="Guarda o rascunho e fecha o editor. Depois use Publicar.">
-              Salvar
-            </button>
-            <button type="button" @click="discardEditorDraft()" :disabled="publishing"
-                    class="btn btn-secondary">
-              Descartar
-            </button>
-            <button x-show="!isNew" type="button" @click="deleteProject()" :disabled="saving || publishing"
-                    class="btn btn-danger">
-              Excluir
-            </button>
+            <div class="editor-actions__left">
+              <button type="button" @click="saveProject()" :disabled="publishing"
+                      class="btn btn-primary"
+                      title="Guarda o rascunho e fecha o editor. Depois use Publicar.">
+                Salvar
+              </button>
+              <button type="button" @click="discardEditorDraft()" :disabled="publishing"
+                      class="btn btn-secondary">
+                Descartar
+              </button>
+            </div>
+            <div class="editor-actions__right" x-show="!isNew" x-cloak>
+              <button type="button" @click="deleteProject()" :disabled="saving || publishing"
+                      class="btn btn-danger">
+                Excluir
+              </button>
+            </div>
           </div>
         </div>
       </div>

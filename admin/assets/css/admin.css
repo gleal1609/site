@@ -336,14 +336,30 @@ input, textarea, select { font: inherit; }
 }
 
 .editor-actions {
-  display: flex; flex-wrap: wrap;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
   gap: 0.75rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border);
   margin-top: 0.5rem;
-  align-items: center;
 }
-.editor-actions .btn-lg { flex: 1 1 160px; }
+.editor-actions__left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.editor-actions__right {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Pixieset — card manual acima dos botões Gerar */
+.pixieset-manual-dock {
+  margin-bottom: 0.75rem;
+}
 
 /* ---- form controls ---- */
 
@@ -426,14 +442,14 @@ input, textarea, select { font: inherit; }
   margin-top: 0.4rem;
 }
 .yt-iframe-dock__col--player {
-  flex: 0 1 auto;
+  flex: 1 1 min(52%, 640px);
   min-width: 0;
   max-width: 100%;
 }
 .yt-iframe-dock__col--tools {
-  flex: 1 1 220px;
-  min-width: 200px;
-  max-width: 32rem;
+  flex: 1 1 260px;
+  min-width: min(100%, 240px);
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -475,6 +491,7 @@ input, textarea, select { font: inherit; }
 }
 .yt-iframe-dock__player-host {
   max-width: 100%;
+  width: 100%;
   min-height: 0;
   display: flex;
   justify-content: center;
@@ -483,11 +500,14 @@ input, textarea, select { font: inherit; }
   overflow: hidden;
   background: #000;
 }
-/* Shorts: iframe ~300×533; largura fixa vinda da API, centrada. */
+/* Tamanhos vêm da API do player; contêiner limita largura em vídeos horizontais largos */
 .yt-iframe-dock__player-host iframe {
   max-width: 100%;
   display: block;
   border: 0;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
 }
 .yt-iframe-dock__actions {
   display: flex;
@@ -530,6 +550,87 @@ input, textarea, select { font: inherit; }
 }
 .toggle-input:checked + .toggle-switch { background: var(--accent); }
 .toggle-input:checked + .toggle-switch::after { transform: translateX(18px); }
+
+/* Espaço sob o rótulo do editor (alinha com «Formato na Home») */
+.field-col.field-col--grow > .toggle-label {
+  margin-top: 0.35rem;
+}
+
+/* Seletor visual de formato (substitui dropdown) */
+.field-col--format {
+  min-width: 0;
+}
+.format-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+.format-picker__btn {
+  flex: 1 1 0;
+  min-width: 4.5rem;
+  max-width: 7rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.4rem 0.5rem;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    background var(--transition),
+    color var(--transition),
+    box-shadow var(--transition);
+  font-family: inherit;
+}
+.format-picker__btn:hover {
+  border-color: var(--accent-h);
+  color: var(--text);
+}
+.format-picker__btn:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.25);
+}
+.format-picker__btn--active {
+  border-color: var(--accent);
+  background: rgba(255, 107, 53, 0.12);
+  color: var(--accent-h);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.format-picker__shape {
+  display: block;
+  width: 100%;
+  max-width: 2.25rem;
+  margin: 0 auto;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+.format-picker__shape--1x1 {
+  aspect-ratio: 1 / 1;
+}
+.format-picker__shape--1x1-5 {
+  aspect-ratio: 2 / 3;
+  max-height: 3.25rem;
+}
+.format-picker__shape--1x2 {
+  aspect-ratio: 1 / 2;
+  max-height: 4.25rem;
+}
+.format-picker__label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
 
 /* chips (service types) */
 
@@ -752,7 +853,7 @@ input, textarea, select { font: inherit; }
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 960px;
+  max-width: min(1200px, calc(100vw - 2rem));
   max-height: none;
   background: var(--bg-2);
   border: 1px solid var(--border);
@@ -761,6 +862,7 @@ input, textarea, select { font: inherit; }
   display: flex;
   flex-direction: column;
   margin-bottom: 2rem;
+  box-sizing: border-box;
 }
 .editor-modal .editor-body {
   flex: 1;
@@ -896,7 +998,18 @@ input, textarea, select { font: inherit; }
   gap: 14px;
   min-width: 0;
   width: 100%;
-  min-height: 40px;
+  min-height: 120px;
+}
+body.admin-home-sorting .admin-projects-col {
+  min-height: 200px;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 18px,
+    rgba(255, 107, 53, 0.04) 18px,
+    rgba(255, 107, 53, 0.04) 19px
+  );
+  border-radius: var(--radius);
 }
 
 /* Espelha a Home: colunas empilhadas, sem vãos (Sortable) */
@@ -909,15 +1022,14 @@ input, textarea, select { font: inherit; }
   text-decoration: none;
   color: inherit;
   background-color: #000;
-  border: none;
+  border: 2px solid transparent;
   border-radius: 10px;
   opacity: 1;
-  cursor: grab;
+  cursor: pointer;
   transition: transform 0.3s ease, border-color 0.3s ease;
   box-sizing: border-box;
-}
-.admin-project-item:active {
-  cursor: grabbing;
+  -webkit-user-drag: none;
+  user-select: none;
 }
 .admin-project-item:hover,
 .admin-project-item:focus {
@@ -929,6 +1041,48 @@ input, textarea, select { font: inherit; }
   outline: 3px solid #ff0000;
   outline-offset: -3px;
   z-index: 10;
+}
+
+/* SortableJS: feedback visual ao arrastar na grelha Home */
+.admin-project-item.sortable-chosen {
+  border: 2px solid var(--accent);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 8px 28px rgba(0, 0, 0, 0.55);
+  z-index: 50;
+  cursor: grabbing;
+}
+.admin-project-item.sortable-ghost {
+  opacity: 0.3;
+  border: 2px dashed var(--accent);
+  background: var(--bg-3);
+  box-shadow: none;
+}
+.admin-project-item.sortable-drag {
+  opacity: 0;
+}
+.sortable-fallback.admin-project-item {
+  z-index: 99999 !important;
+  opacity: 0.88 !important;
+  cursor: grabbing !important;
+  border: 2px solid var(--accent) !important;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 3px rgba(255, 107, 53, 0.3),
+    0 16px 48px rgba(0, 0, 0, 0.6) !important;
+  pointer-events: none;
+  transition: none !important;
+}
+body.admin-home-sorting .admin-project-item:hover,
+body.admin-home-sorting .admin-project-item:focus {
+  transform: none;
+  box-shadow: none;
+}
+body.admin-home-sorting .admin-project-item.sortable-chosen:hover,
+body.admin-home-sorting .admin-project-item.sortable-chosen:focus {
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 8px 28px rgba(0, 0, 0, 0.55);
 }
 
 .admin-project-item__thumb {
@@ -1017,18 +1171,56 @@ input, textarea, select { font: inherit; }
   overflow: hidden;
 }
 
-/* Badge de «Rascunho» é metadado exclusivo do admin — marca com discrição
-   os itens com alterações pendentes (posição canto sup. direito, sem
-   competir com o overlay que só aparece em hover). */
-.admin-project-item__badges {
+/* Metadados da grelha (ordem, coluna, formato, rascunho) — canto sup. esquerdo */
+.admin-project-item__meta-badges {
   position: absolute;
   top: 6px;
-  right: 6px;
+  left: 6px;
   display: flex;
   gap: 3px;
   flex-wrap: wrap;
   z-index: 2;
   pointer-events: none;
+  max-width: calc(100% - 44px);
+}
+
+/* Drag handle — canto sup. direito */
+.admin-project-item__drag-handle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  z-index: 10;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.6);
+  transition: background 0.2s, color 0.2s;
+  pointer-events: auto;
+  -webkit-user-drag: none;
+}
+.admin-project-item__drag-handle:hover {
+  background: rgba(255, 107, 53, 0.7);
+  color: #fff;
+}
+.admin-project-item__drag-handle:active {
+  cursor: grabbing;
+  background: var(--accent);
+  color: #fff;
+}
+.admin-project-item__drag-handle svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  pointer-events: none;
+}
+body.admin-home-sorting .admin-project-item__drag-handle {
+  background: var(--accent);
+  color: #fff;
 }
 
 /* ---- aba Hero ---- */
