@@ -40,6 +40,15 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    if (request.method === 'GET' && path.startsWith('/media/')) {
+      try {
+        return await handlePublicMedia(env, path);
+      } catch (e) {
+        console.error('Media error:', e);
+        return error('Internal server error', 500);
+      }
+    }
+
     const corsResult = corsMiddleware(request, env);
     if (corsResult instanceof Response) return corsResult;
     const { corsHeaders } = corsResult;
@@ -77,10 +86,6 @@ async function route(request, env, ctx, path) {
 
   if (path === '/health' && method === 'GET') {
     return handleHealth(env);
-  }
-  /** Mídia R2 pública — sem auth; use MEDIA_BASE_URL = https://<worker>/media */
-  if (method === 'GET' && path.startsWith('/media/')) {
-    return handlePublicMedia(env, path);
   }
   // Raiz: sem auth (evita 401 ao abrir :8787 no browser). O site estático é o Jekyll (ex. :4000).
   if (path === '/' && method === 'GET') {

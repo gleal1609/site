@@ -23,6 +23,7 @@ export async function handlePublicMedia(env, pathname) {
     headers: {
       'Content-Type': ct,
       'Cache-Control': cache,
+      'Access-Control-Allow-Origin': '*',
     },
   });
 }

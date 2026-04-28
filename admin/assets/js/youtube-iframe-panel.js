@@ -89,7 +89,7 @@ function createPlayer(elementId, videoId, options) {
         videoId,
         width,
         height,
-        host: 'https://www.youtube.com',
+        host: 'https://www.youtube-nocookie.com',
         playerVars: {
           rel: 0,
           playsinline: 1,
