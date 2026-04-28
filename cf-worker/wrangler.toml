@@ -31,3 +31,5 @@ COOKIE_DOMAIN = ""
 JWT_TTL_SECONDS = "28800"
 # false = cookie __session sem Max-Age (sessão do browser); ao fechar o browser perde-se o login. Não força novo pedido de senha no GitHub se já estiver logado lá.
 PERSIST_SESSION_COOKIE = "false"
+# POST ao build hook do Netlify: ?trigger_branch=… (sobrescreve a branch configurada no dashboard do hook).
+NETLIFY_DEPLOY_BRANCH = "main"
