@@ -153,25 +153,22 @@ function adminApp() {
     videoFile: null,
     videoPreview: null,
 
-    /** YouTube IFrame API — scrub + timestamps a persistir / ingest */
-    ytApiPlayer: null,
+    /** YouTube preview — HTML5 video via servidor local */
+    ytLocalPreviewUrl: null,
+    ytLocalPreviewLoading: false,
     ytPlayerDuration: 0,
     ytScrubTime: 0,
-    ytPlayerIniting: false,
-    /** Pré-visualização 9:16 no admin quando o URL não é /shorts/ (ex.: watch?v= com vídeo vertical). */
-    ytPreviewPortrait: false,
-    /** Estado do botão «Gerar capa e prévia» para evitar duplos cliques enquanto o dispatch decorre. */
+    _lastYtVideoId: null,
+    /** Estado do botão «Gerar capa e prévia» para evitar duplos cliques. */
     ytIngestBusy: false,
-    /** URL do workflow no GitHub Actions (permanente após primeiro dispatch com sucesso; persistido em localStorage). */
-    ytIngestLastRunUrl: '',
-    /** ISO timestamp do último dispatch feito a partir deste browser. */
-    ytIngestLastRunAt: '',
     /** Importação Pixieset — capa + slideshow (Worker resolve + proxy) */
     pixiesetBusy: false,
     pixiesetCidOverride: '',
     pixiesetCidNeeded: false,
+    /** Servidor local de mídia (localhost:7847) */
+    localServerAvailable: false,
+    localServerChecking: false,
     _ytUrlDebounce: null,
-    _ytDurationPoll: null,
 
     publishing: false,
     publishPhase: '',
@@ -204,14 +201,17 @@ function adminApp() {
       this._auth = new Auth(apiBase);
       this._api = new CfAPI(apiBase);
 
-      try {
-        const savedRunUrl = localStorage.getItem('reverso-yt-ingest-last-run-url');
-        const savedRunAt = localStorage.getItem('reverso-yt-ingest-last-run-at');
-        if (savedRunUrl) this.ytIngestLastRunUrl = savedRunUrl;
-        if (savedRunAt) this.ytIngestLastRunAt = savedRunAt;
-      } catch (_) {
-        /* localStorage indisponível — ignorar. */
-      }
+      this._checkLocalServer();
+      this._localServerPollInterval = setInterval(() => this._checkLocalServer(), 30000);
+
+      window.addEventListener('reverso-local-server:online', () => {
+        if (this.localServerAvailable) return;
+        this._checkLocalServer().then(() => {
+          if (this.localServerAvailable && this.editorOpen) {
+            this._initYoutubePlayerPanel();
+          }
+        });
+      });
 
       this._beforeUnloadBound = (e) => {
         if (this.hasUnpublishedChanges) {
@@ -654,7 +654,7 @@ function adminApp() {
     },
 
     async openEditor(project) {
-      this._destroyYoutubePanel();
+      this._destroyYoutubePanel(true);
       this.isNew = false;
       this.editSlug = project._slug;
       this.editorOpen = true;
@@ -727,7 +727,7 @@ function adminApp() {
     },
 
     newProject() {
-      this._destroyYoutubePanel();
+      this._destroyYoutubePanel(true);
       this.isNew = true;
       this.editSlug = null;
       this.editorOpen = true;
@@ -768,13 +768,12 @@ function adminApp() {
     },
 
     closeEditor() {
-      this._destroyYoutubePanel();
+      this._destroyYoutubePanel(true);
       this.editorOpen = false;
       this.editSlug = null;
       this.form = {};
       this.isNew = false;
       this.formDirty = false;
-      this.ytPreviewPortrait = false;
       this.pixiesetCidOverride = '';
       this.pixiesetCidNeeded = false;
       this._clearUploads();
@@ -829,7 +828,7 @@ function adminApp() {
     async _reloadEditorFromApi(slug) {
       this.editorLoading = true;
       this._clearUploads();
-      this._destroyYoutubePanel();
+      this._destroyYoutubePanel(true);
       try {
         const data = await this._api.getProject(slug);
         this._suppressFormDirty = true;
@@ -1108,27 +1107,13 @@ function adminApp() {
       }
     },
 
-    _destroyYoutubePanel() {
-      if (this._ytDurationPoll) {
-        try {
-          clearInterval(this._ytDurationPoll);
-        } catch { /* */ }
-        this._ytDurationPoll = null;
-      }
-      this.ytPlayerIniting = false;
-      const Y = globalThis.ReversoYoutubeIframe;
-      if (Y && this.ytApiPlayer) {
-        try {
-          Y.destroyPlayer(this.ytApiPlayer);
-        } catch { /* */ }
-      }
-      this.ytApiPlayer = null;
+    _destroyYoutubePanel(resetVideoId) {
+      this.ytLocalPreviewLoading = false;
       this.ytPlayerDuration = 0;
       this.ytScrubTime = 0;
-      if (Y && Y.clearPlayerHost) {
-        try {
-          Y.clearPlayerHost('yt-iframe-admin-host');
-        } catch { /* */ }
+      if (resetVideoId) {
+        this._lastYtVideoId = null;
+        this.ytLocalPreviewUrl = null;
       }
     },
 
@@ -1178,123 +1163,82 @@ function adminApp() {
       }
     },
 
-    _pollYoutubeDuration(p) {
-      if (this._ytDurationPoll) {
-        try {
-          clearInterval(this._ytDurationPoll);
-        } catch { /* */ }
-        this._ytDurationPoll = null;
-      }
-      if (!p || typeof p.getDuration !== 'function') return;
-      const tick = () => {
-        let d = 0;
-        try {
-          d = p.getDuration();
-        } catch { /* */ }
-        if (d > 0.5) {
-          this.ytPlayerDuration = d;
-          if (this._ytDurationPoll) {
-            try {
-              clearInterval(this._ytDurationPoll);
-            } catch { /* */ }
-            this._ytDurationPoll = null;
-          }
-        }
-      };
-      tick();
-      if (this.ytPlayerDuration > 0.5) return;
-      this._ytDurationPoll = setInterval(tick, 200);
-      setTimeout(() => {
-        if (this._ytDurationPoll) {
-          try {
-            clearInterval(this._ytDurationPoll);
-          } catch { /* */ }
-          this._ytDurationPoll = null;
-        }
-      }, 10000);
+    _extractYoutubeVideoId(url) {
+      if (!url || typeof url !== 'string') return null;
+      const u = url.trim();
+      let m = u.match(/youtube\.com\/shorts\/([^?&/]+)/i);
+      if (m) return m[1];
+      m = u.match(/[?&]v=([^&]+)/i);
+      if (m) return m[1];
+      m = u.match(/youtu\.be\/([^?&/]+)/i);
+      if (m) return m[1];
+      m = u.match(/youtube\.com\/embed\/([^?&/]+)/i);
+      if (m) return m[1];
+      return null;
     },
 
-    async _initYoutubePlayerPanel() {
-      const Y = globalThis.ReversoYoutubeIframe;
-      if (!Y || !this.editorOpen) {
-        this._destroyYoutubePanel();
-        return;
-      }
+    async _initYoutubePlayerPanel(forceRetry) {
       const url = (this.form?.youtube_url || '').trim();
-      const id = url ? Y.extractVideoId(url) : null;
-      if (!id) {
-        this._destroyYoutubePanel();
+      const id = this._extractYoutubeVideoId(url);
+
+      if (!id || !this.editorOpen || !this.localServerAvailable) {
+        this._destroyYoutubePanel(true);
         return;
       }
+
+      if (!forceRetry && id === this._lastYtVideoId && this.ytLocalPreviewUrl) {
+        return;
+      }
+
+      const LS = globalThis.ReversoLocalServer;
+      if (!LS) { this._destroyYoutubePanel(true); return; }
+
       this._destroyYoutubePanel();
-      this.ytPlayerIniting = true;
-      const isShorts =
-        (typeof Y.isShortsUrl === 'function' && Y.isShortsUrl(url)) || this.ytPreviewPortrait;
-      const w = isShorts ? 300 : 640;
-      const h = isShorts ? Math.round((w * 16) / 9) : 360;
+      this._lastYtVideoId = id;
+      this.ytLocalPreviewLoading = true;
+
       try {
+        const data = await LS.youtubePreview(url);
+        if (!this.editorOpen || this._lastYtVideoId !== id) return;
+
+        this.ytLocalPreviewUrl = data.preview_url;
+        this.ytLocalPreviewLoading = false;
+
         await this.$nextTick();
-        if (typeof requestAnimationFrame === 'function') {
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const vid = document.getElementById('yt-local-video');
+        if (vid) {
+          vid.src = data.preview_url;
+          vid.load();
         }
-        const p = await Y.createPlayer('yt-iframe-admin-host', id, {
-          width: w,
-          height: h,
-          timeoutMs: 25000,
-        });
-        this.ytApiPlayer = p;
-        this.ytPlayerDuration = typeof p.getDuration === 'function' ? p.getDuration() : 0;
-        this._pollYoutubeDuration(p);
-        const t0 = this._numOrNull(this.form?.youtube_thumb_time_sec);
-        this.ytScrubTime = t0 != null && t0 > 0 ? t0 : 0;
-        if (this.ytPlayerDuration > 0 && this.ytScrubTime > this.ytPlayerDuration) {
-          this.ytScrubTime = 0;
-        }
-        if (typeof p.mute === 'function') p.mute();
-        p.seekTo(this.ytScrubTime, true);
-        this._autoPauseOnFirstFrame(p);
       } catch (e) {
-        this._toast('YouTube: ' + (e.message || 'não foi possível carregar o vídeo'), 'error');
-      } finally {
-        this.ytPlayerIniting = false;
+        console.warn('[preview local] Falhou:', e.message);
+        this.ytLocalPreviewLoading = false;
+        this.ytLocalPreviewUrl = null;
+        this._toast('Preview local falhou: ' + (e.message || ''), 'error');
       }
     },
 
-    /**
-     * Espera o player renderizar o primeiro frame (estado PLAYING) e então pausa.
-     * Isso garante que o usuário veja um quadro estático em vez de tela preta.
-     * O listener se auto-remove após pausar ou após 8 s (timeout de segurança).
-     */
-    _autoPauseOnFirstFrame(player) {
-      const p = player;
-      if (!p) return;
-      const YTApi = globalThis.YT;
-      if (!YTApi || !YTApi.PlayerState) return;
+    onLocalVideoLoaded() {
+      const vid = document.getElementById('yt-local-video');
+      if (!vid) return;
+      this.ytPlayerDuration = vid.duration || 0;
+      const t0 = this._numOrNull(this.form?.youtube_thumb_time_sec);
+      this.ytScrubTime = t0 != null && t0 > 0 ? t0 : 0;
+      if (this.ytPlayerDuration > 0 && this.ytScrubTime > this.ytPlayerDuration) {
+        this.ytScrubTime = 0;
+      }
+      vid.currentTime = this.ytScrubTime;
+    },
 
-      let done = false;
-      const handler = (ev) => {
-        if (done) return;
-        if (ev && ev.data === YTApi.PlayerState.PLAYING) {
-          done = true;
-          try { p.pauseVideo(); } catch { /* */ }
-          try { p.removeEventListener('onStateChange', handler); } catch { /* */ }
-        }
-      };
-      try {
-        p.addEventListener('onStateChange', handler);
-      } catch { /* */ }
-
-      setTimeout(() => {
-        if (done) return;
-        done = true;
-        try { p.removeEventListener('onStateChange', handler); } catch { /* */ }
-      }, 8000);
+    retryYoutubePlayer() {
+      this._lastYtVideoId = null;
+      this._initYoutubePlayerPanel(true);
     },
 
     onYtScrubInput() {
       const t = Number(this.ytScrubTime) || 0;
-      const p = this.ytApiPlayer;
-      if (p && typeof p.seekTo === 'function') p.seekTo(t, true);
+      const vid = document.getElementById('yt-local-video');
+      if (vid) { vid.currentTime = t; vid.pause(); }
     },
 
     applyYoutubeThumbTime() {
@@ -1311,24 +1255,23 @@ function adminApp() {
       this._persistYouTubeTimeDraft();
     },
 
-    /**
-     * Envia um `repository_dispatch` ao GitHub Actions via Worker.
-     * Requer projecto já publicado (tem de existir no D1 para o runner lê-lo).
-     * Se houver alterações não publicadas (ex.: instantes novos ou URL novo),
-     * publica primeiro para garantir que o runner usa os valores correctos.
-     */
+    async _checkLocalServer() {
+      const LS = globalThis.ReversoLocalServer;
+      if (!LS) { this.localServerAvailable = false; return; }
+      this.localServerChecking = true;
+      try {
+        this.localServerAvailable = await LS.checkHealth();
+      } catch {
+        this.localServerAvailable = false;
+      } finally {
+        this.localServerChecking = false;
+      }
+    },
+
     async ingestYoutubeFromPanel() {
       if (this.ytIngestBusy) return;
-      if (this.isNew) {
-        this._toast(
-          'Salve e publique o projeto antes de gerar a capa e a prévia.',
-          'warning',
-        );
-        return;
-      }
-      const slug = this.form?._slug;
-      if (!slug) {
-        this._toast('Slug do projeto em falta.', 'error');
+      if (!this.localServerAvailable) {
+        this._toast('Inicie o Reverso Media Server (.bat) para usar esta função.', 'warning');
         return;
       }
       const url = (this.form?.youtube_url || '').trim();
@@ -1336,53 +1279,38 @@ function adminApp() {
         this._toast('URL do YouTube em falta.', 'error');
         return;
       }
+      return this._ingestYoutubeLocal(url);
+    },
 
-      const needsPublish =
-        this.formDirty ||
-        this.thumbFile ||
-        this.videoFile ||
-        !!this.projectDrafts[slug];
-      if (needsPublish) {
-        const ok = confirm(
-          'Há alterações não publicadas. Publicar agora antes de gerar a capa e a prévia?\n' +
-            'Você pode clicar em «Cancelar» para voltar.',
-        );
-        if (!ok) return;
-        try {
-          await this.publishAll();
-        } catch (e) {
-          this._toast('Publicação falhou; ingestão abortada: ' + (e.message || e), 'error');
-          return;
-        }
-        if (this.projectDrafts[slug]) {
-          this._toast('Há ainda rascunho por publicar; ingestão abortada.', 'warning');
-          return;
-        }
-      }
+    async _ingestYoutubeLocal(youtubeUrl) {
+      const LS = globalThis.ReversoLocalServer;
+      if (!LS) return;
 
       this.ytIngestBusy = true;
       try {
-        const res = await this._api.ingestYoutube(slug);
-        const url = res?.actions_url || '';
-        if (url) {
-          this.ytIngestLastRunUrl = url;
-          this.ytIngestLastRunAt = new Date().toISOString();
-          try {
-            localStorage.setItem('reverso-yt-ingest-last-run-url', url);
-            localStorage.setItem('reverso-yt-ingest-last-run-at', this.ytIngestLastRunAt);
-          } catch (_) {
-            /* localStorage indisponível (modo privado, etc.) — ignoramos. */
-          }
-        }
-        this._toast(
-          'Processamento iniciado (GitHub Actions). Em geral leva de 2 a 5 minutos. Use «Ver execuções no GitHub» para acompanhar; depois reabra o projeto para ver a capa e a prévia atualizadas.',
-          'success',
-        );
+        this._toast('Gerando capa e prévia localmente... Isso pode levar alguns minutos.', 'info');
+        const result = await LS.ingestYoutube({
+          youtube_url: youtubeUrl,
+          thumb_time_sec: Number(this.form?.youtube_thumb_time_sec) || 0,
+          preview_start_sec: Number(this.form?.youtube_preview_start_sec) || 0,
+        });
+
+        const thumbFile = new File([result.poster], 'yt-poster.jpg', { type: 'image/jpeg' });
+        MediaUpload.validate(thumbFile, MediaUpload.IMG_TYPES);
+        MediaUpload.revokePreview(this.thumbPreview);
+        this.thumbFile = thumbFile;
+        this.thumbPreview = MediaUpload.preview(thumbFile);
+
+        const videoFile = new File([result.hover], 'yt-hover.mp4', { type: 'video/mp4' });
+        MediaUpload.validate(videoFile, MediaUpload.VID_TYPES);
+        MediaUpload.revokePreview(this.videoPreview);
+        this.videoFile = videoFile;
+        this.videoPreview = MediaUpload.preview(videoFile);
+
+        this.formDirty = true;
+        this._toast('Capa e prévia geradas com sucesso! Use «Salvar» e «Publicar» para aplicar.', 'success');
       } catch (e) {
-        this._toast(
-          'Falha ao iniciar o processamento: ' + (e.message || String(e)),
-          'error',
-        );
+        this._toast('Falha ao gerar localmente: ' + (e.message || String(e)), 'error');
       } finally {
         this.ytIngestBusy = false;
       }
@@ -1421,16 +1349,23 @@ function adminApp() {
         return;
       }
 
+      if (!this.localServerAvailable) {
+        this._toast('Inicie o Reverso Media Server (.bat) para usar esta função.', 'warning');
+        return;
+      }
+      const LS = globalThis.ReversoLocalServer;
+      if (!LS) { this._toast('Cliente do servidor local não carregado.', 'error'); return; }
+
       this.pixiesetBusy = true;
       try {
-        const data = await this._api.pixiesetResolve(galleryUrl, this.pixiesetCidOverride);
+        const data = await LS.resolvePixieset(galleryUrl, this.pixiesetCidOverride || undefined);
         this.pixiesetCidNeeded = false;
         if (which === 'thumb' || which === 'both') {
           if (!data.cover) {
             throw new Error('Não foi possível obter a imagem de capa.');
           }
-          const p = `${this._api.base}/api/pixieset/proxy?u=${encodeURIComponent(data.cover)}`;
-          const res = await fetch(p, { credentials: 'include' });
+          const proxyUrl = LS.pixiesetProxyUrl(data.cover);
+          const res = await fetch(proxyUrl);
           if (!res.ok) {
             throw new Error(`Capa: pedido HTTP ${res.status}`);
           }
@@ -1446,8 +1381,7 @@ function adminApp() {
           if (!Array.isArray(slides) || !slides.length) {
             throw new Error('Não foi possível obter as fotos para o vídeo.');
           }
-          const buildProxy = (u) =>
-            `${this._api.base}/api/pixieset/proxy?u=${encodeURIComponent(u)}`;
+          const buildProxy = (u) => LS.pixiesetProxyUrl(u);
           const vBlob = await S.buildWebmFromImages(slides, buildProxy, {
             totalSeconds: 5,
             secondsPerSlide: 1,
@@ -1898,17 +1832,9 @@ function adminApp() {
       return ADMIN_CONFIG.serviceTypes;
     },
 
-    get youtubeIframeBlockVisible() {
-      const Y = globalThis.ReversoYoutubeIframe;
+    get youtubePreviewVisible() {
       const u = (this.form?.youtube_url || '').trim();
-      return !!(Y && u && Y.extractVideoId(u));
-    },
-
-    /** True quando o link já é do formato /shorts/ (o leitor 9:16 aplica-se automaticamente). */
-    get isYoutubeUrlShortsFormat() {
-      const Y = globalThis.ReversoYoutubeIframe;
-      const u = (this.form?.youtube_url || '').trim();
-      return !!(Y && u && Y.isShortsUrl && Y.isShortsUrl(u));
+      return !!(u && this._extractYoutubeVideoId(u) && this.localServerAvailable);
     },
   };
 }

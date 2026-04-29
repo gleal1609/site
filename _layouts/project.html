@@ -16,7 +16,6 @@ layout: none
 
   <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
   <link rel="stylesheet" href="{{ '/assets/css/bottom-nav.css' | relative_url }}">
-  <link rel="stylesheet" href="{{ '/assets/css/site-footer.css' | relative_url }}">
 </head>
 <body>
   <div class="project-detail-page">
@@ -50,47 +49,40 @@ layout: none
       </section>
     {% endif %}
 
-    <!-- Thumbnail Image -->
-    {% if page.thumbnail %}
-      <section class="project-thumbnail-section">
-        {% assign _t = page.thumbnail | strip %}
-        <img 
-          src="{% if _t contains '://' %}{{ _t }}{% else %}{{ _t | relative_url }}{% endif %}" 
-          alt="{{ page.title }}"
-          class="project-thumbnail-image"
-          loading="eager"
-        />
-      </section>
-    {% endif %}
-
     <!-- Content -->
     <main class="project-content">
-      <!-- YouTube Video -->
-      {% if page.youtube_url %}
+      <!-- YouTube -->
+      {% assign _yt = page.youtube_url | default: '' | strip %}
+      {% if _yt != '' %}
+        {% include project-youtube-id.html url=_yt %}
+        {% if youtube_video_id != '' %}
         <section class="project-video-section">
           <h2 class="section-title">Vídeo</h2>
           <div class="video-container">
-            {% assign youtube_id = page.youtube_url | replace: 'https://www.youtube.com/watch?v=', '' | replace: 'https://youtube.com/watch?v=', '' | replace: 'https://youtu.be/', '' | replace: 'https://www.youtu.be/', '' | split: '&' | first %}
-            <iframe 
-              src="https://www.youtube.com/embed/{{ youtube_id }}?rel=0" 
-              frameborder="0" 
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+            <iframe
+              src="https://www.youtube.com/embed/{{ youtube_video_id }}?rel=0&modestbranding=1&playsinline=1"
+              title="{{ page.title | escape }} — vídeo no YouTube"
+              frameborder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowfullscreen
+              referrerpolicy="strict-origin-when-cross-origin"
               class="youtube-embed"
-              loading="lazy"
             ></iframe>
           </div>
         </section>
+        {% endif %}
       {% endif %}
 
-      <!-- PixieSet Gallery -->
-      {% if page.pixieset_url %}
+      <!-- Pixieset -->
+      {% assign _px = page.pixieset_url | default: '' | strip %}
+      {% assign _pxl = _px | downcase %}
+      {% if _px != '' and _pxl contains 'pixieset.com' %}
         <section class="project-gallery-section">
           <h2 class="section-title">Galeria de Fotos</h2>
           <div class="pixieset-wrapper">
             <div class="pixieset-scrollable-container">
               <iframe 
-                src="{{ page.pixieset_url }}" 
+                src="{{ _px }}" 
                 frameborder="0" 
                 allowfullscreen
                 class="pixieset-embed"
@@ -99,7 +91,7 @@ layout: none
             </div>
           </div>
           <div class="pixieset-link-wrapper">
-            <a href="{{ page.pixieset_url }}" target="_blank" rel="noopener" class="pixieset-external-link">
+            <a href="{{ _px }}" target="_blank" rel="noopener" class="pixieset-external-link">
               <i class="fa-solid fa-external-link"></i> Abrir galeria completa em nova aba
             </a>
           </div>
@@ -114,8 +106,6 @@ layout: none
     </main>
   </div>
 
-  {% include site-footer.html %}
-  
   {% include bottom-nav.html %}
   
   <!-- GSAP for bottom nav animations -->

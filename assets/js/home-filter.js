@@ -1,36 +1,57 @@
 /**
- * Filtro de serviços + Carregar mais (Home).
+ * Filtro de serviços (multi-select) + Carregar mais (Home).
  */
 (function () {
   'use strict';
+
+  var activeServices = new Set();
 
   function getButtons() {
     return document.querySelectorAll('.home-filter__btn[data-service]');
   }
 
-  function setActive(service) {
-    getButtons().forEach((btn) => {
-      const isAct = btn.getAttribute('data-service') === service;
-      btn.classList.toggle('home-filter__btn--active', isAct);
+  function syncButtonStyles() {
+    var isAll = activeServices.size === 0;
+    getButtons().forEach(function (btn) {
+      var svc = btn.getAttribute('data-service');
+      if (svc === '__all__') {
+        btn.classList.toggle('home-filter__btn--active', isAll);
+      } else {
+        btn.classList.toggle('home-filter__btn--active', activeServices.has(svc));
+      }
     });
   }
 
   function onFilterClick(e) {
-    const btn = e.target.closest('.home-filter__btn[data-service]');
+    var btn = e.target.closest('.home-filter__btn[data-service]');
     if (!btn) return;
     e.preventDefault();
-    const service = btn.getAttribute('data-service') || '__all__';
-    setActive(service);
-    const sc = document.getElementById('home-filter-scroll');
-    if (sc && typeof btn.scrollIntoView === 'function') {
-      try {
-        btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-      } catch (_) {
-        btn.scrollIntoView();
+
+    var service = btn.getAttribute('data-service') || '__all__';
+
+    if (service === '__all__') {
+      activeServices.clear();
+    } else {
+      if (activeServices.has(service)) {
+        activeServices.delete(service);
+      } else {
+        activeServices.add(service);
       }
     }
+
+    syncButtonStyles();
+
+    try {
+      btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    } catch (_) {
+      btn.scrollIntoView();
+    }
+
     if (window.HomeMasonry && typeof window.HomeMasonry.setFilter === 'function') {
-      window.HomeMasonry.setFilter(service);
+      var filterValue = activeServices.size === 0
+        ? '__all__'
+        : Array.from(activeServices);
+      window.HomeMasonry.setFilter(filterValue);
     }
   }
 
@@ -41,14 +62,15 @@
   }
 
   function init() {
-    const filter = document.getElementById('home-filter');
+    var filter = document.getElementById('home-filter');
     if (filter) {
       filter.addEventListener('click', onFilterClick);
     }
-    const more = document.getElementById('load-more-btn');
+    var more = document.getElementById('load-more-btn');
     if (more) {
       more.addEventListener('click', onLoadMore);
     }
+    syncButtonStyles();
   }
 
   if (document.readyState === 'loading') {

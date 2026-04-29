@@ -1,0 +1,13 @@
+{%- assign youtube_video_id = '' -%}
+{%- assign _u = include.url | default: '' | strip -%}
+{%- if _u != '' -%}
+  {%- if _u contains '/shorts/' -%}
+    {%- assign youtube_video_id = _u | split: '/shorts/' | last | split: '?' | first | split: '/' | first | strip -%}
+  {%- elsif _u contains 'youtu.be/' -%}
+    {%- assign youtube_video_id = _u | split: 'youtu.be/' | last | split: '?' | first | strip -%}
+  {%- elsif _u contains '/embed/' -%}
+    {%- assign youtube_video_id = _u | split: '/embed/' | last | split: '?' | first | strip -%}
+  {%- elsif _u contains 'v=' -%}
+    {%- assign youtube_video_id = _u | split: 'v=' | last | split: '&' | first | strip -%}
+  {%- endif -%}
+{%- endif -%}

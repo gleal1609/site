@@ -171,7 +171,7 @@ async function extractPoster(ffmpeg, videoPath, posterJpg, timeSec = 0) {
   if (t > 0) {
     args.push('-ss', String(t));
   }
-  args.push('-vframes', '1', '-q:v', '85', posterJpg);
+  args.push('-vframes', '1', '-q:v', '2', posterJpg);
   await execFileAsync(ffmpeg, args, { maxBuffer: 8 * 1024 * 1024 });
 }
 

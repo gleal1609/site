@@ -16,8 +16,7 @@ layout: none
 
   <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
   <link rel="stylesheet" href="{{ '/assets/css/bottom-nav.css' | relative_url }}">
-  <link rel="stylesheet" href="{{ '/assets/css/site-footer.css' | relative_url }}">
-  
+
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js" crossorigin="anonymous"></script>
 </head>
@@ -54,21 +53,19 @@ layout: none
           />
         </div>
 
-        <!-- Service Types Filter -->
-        <div class="filter-group">
+        <!-- Service types: botões em pílula (multi-select, como na Home) -->
+        <div class="filter-group filter-group--services">
           <label class="filter-label">Tipos de Serviço</label>
           <p x-show="loading" class="filter-empty">Carregando...</p>
-          <div class="filter-checkboxes" x-show="!loading && availableServiceTypes.length > 0">
+          <div class="projects-filter-service-btns" x-show="!loading && availableServiceTypes.length > 0">
             <template x-for="serviceType in availableServiceTypes" :key="serviceType">
-              <label class="checkbox-label">
-                <input 
-                  type="checkbox" 
-                  :value="serviceType"
-                  x-model="selectedServiceTypes"
-                  @change="updateFilters()"
-                />
-                <span x-text="serviceType"></span>
-              </label>
+              <button
+                type="button"
+                class="servico-link projects-filter__btn"
+                :class="{ 'projects-filter__btn--active': selectedServiceTypes.includes(serviceType) }"
+                @click="toggleServiceType(serviceType)"
+                x-text="serviceType"
+              ></button>
             </template>
           </div>
           <p x-show="!loading && availableServiceTypes.length === 0" class="filter-empty">Nenhum tipo listado</p>
@@ -126,8 +123,6 @@ layout: none
       <p>Nenhum projeto encontrado com os filtros selecionados.</p>
     </div>
   </div>
-
-  {% include site-footer.html %}
 
   {% include bottom-nav.html %}
   

@@ -12,10 +12,11 @@ _data/projects.json
 _config.local.yml
 cf-worker/node_modules/
 scripts/node_modules/
+scripts/.bin/
+scripts/.cache/
 cf-worker/.wrangler/
 cf-worker/.dev.vars
 cf-worker/_site/
 cf-worker/migrations/
 DOCUMENTACAO.md
 MIGRACAO_CONTAS_CLIENTE.md
-youtube_feature_spec.md
