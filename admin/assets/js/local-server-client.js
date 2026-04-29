@@ -44,22 +44,31 @@
   }
 
   /**
-   * POST /resolve-pixieset — resolve galeria e retorna URLs da capa + slides.
+   * POST /resolve-pixieset — resolve galeria via Puppeteer e retorna URLs da capa + slides.
    * @param {string} galleryUrl
-   * @param {string} [cidOverride]
    * @returns {Promise<{ cover: string|null, slides: string[] }>}
    */
-  async function resolvePixieset(galleryUrl, cidOverride) {
-    const res = await fetch(`${BASE}/resolve-pixieset`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gallery_url: galleryUrl, cid_override: cidOverride || undefined }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || `Servidor local retornou ${res.status}`);
+  async function resolvePixieset(galleryUrl) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 120000);
+    try {
+      const res = await fetch(`${BASE}/resolve-pixieset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gallery_url: galleryUrl }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Servidor local retornou ${res.status}`);
+      }
+      return await res.json();
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('Timeout: servidor demorou mais de 2 min.');
+      throw e;
+    } finally {
+      clearTimeout(timer);
     }
-    return await res.json();
   }
 
   /**
