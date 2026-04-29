@@ -104,13 +104,20 @@ body:has(> .bottom-nav) .site-footer {
 .site-footer__marquee-row {
   display: flex;
   width: max-content;
-  will-change: transform;
   animation: site-footer-marquee 38s linear infinite;
+  animation-play-state: paused;
+  /* --marquee-shift (px) preenchido por site-footer-marquee.js; fallback -50% */
+  transform: translate3d(0, 0, 0);
+}
+
+.site-footer__marquee-row.is-marquee-synced {
+  animation-play-state: running;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .site-footer__marquee-row {
     animation: none;
+    animation-play-state: running;
     margin: 0 auto;
     max-width: 100%;
     width: 100%;
@@ -122,10 +129,10 @@ body:has(> .bottom-nav) .site-footer {
 
 @keyframes site-footer-marquee {
   0% {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
   100% {
-    transform: translateX(-50%);
+    transform: translate3d(var(--marquee-shift, -50%), 0, 0);
   }
 }
 
@@ -134,7 +141,9 @@ body:has(> .bottom-nav) .site-footer {
   flex-wrap: nowrap;
   align-items: center;
   flex: 0 0 auto;
+  flex-shrink: 0;
   padding: 0 0.5rem;
+  box-sizing: border-box;
 }
 
 .site-footer__marquee-phrase {

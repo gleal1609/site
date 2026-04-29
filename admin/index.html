@@ -18,8 +18,9 @@
   <script src="/admin/assets/js/cf-api.js"></script>
   <script src="/admin/assets/js/auth.js"></script>
   <script src="/admin/assets/js/media-upload.js"></script>
-  <script src="/admin/assets/js/youtube-iframe-panel.js"></script>
+
   <script src="/admin/assets/js/pixieset-slideshow.js"></script>
+  <script src="/admin/assets/js/local-server-client.js"></script>
   <script src="/admin/assets/js/admin-app.js"></script>
 
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
@@ -394,12 +395,14 @@
                 <img x-show="thumbPreview || form.thumbnail"
                      :src="thumbPreview || form.thumbnail"
                      alt="" class="upload-preview" />
-                <input type="file" accept="image/jpeg,image/png,image/webp"
-                       @change="onThumbChange($event)"
-                       class="file-input" id="thumb-input" />
-                <label for="thumb-input" class="upload-btn">Escolher imagem</label>
-                <span class="upload-hint"
-                      x-text="thumbFile ? thumbFile.name : (form.thumbnail || 'Nenhuma imagem')"></span>
+                <div class="upload-area__info">
+                  <input type="file" accept="image/jpeg,image/png,image/webp"
+                         @change="onThumbChange($event)"
+                         class="file-input" id="thumb-input" />
+                  <label for="thumb-input" class="upload-btn">Escolher imagem</label>
+                  <span class="upload-hint"
+                        x-text="thumbFile ? thumbFile.name : (form.thumbnail || 'Nenhuma imagem')"></span>
+                </div>
               </div>
             </div>
             <div class="field-col">
@@ -408,79 +411,95 @@
                 <video x-show="videoPreview || form.hover_preview"
                        :src="videoPreview || form.hover_preview"
                        class="upload-preview" muted controls playsinline></video>
-                <input type="file" accept="video/mp4,video/webm"
-                       @change="onVideoChange($event)"
-                       class="file-input" id="video-input" />
-                <label for="video-input" class="upload-btn">Escolher vídeo</label>
-                <span class="upload-hint"
-                      x-text="videoFile ? videoFile.name : (form.hover_preview || 'Nenhum vídeo')"></span>
+                <div class="upload-area__info">
+                  <input type="file" accept="video/mp4,video/webm"
+                         @change="onVideoChange($event)"
+                         class="file-input" id="video-input" />
+                  <label for="video-input" class="upload-btn">Escolher vídeo</label>
+                  <span class="upload-hint"
+                        x-text="videoFile ? videoFile.name : (form.hover_preview || 'Nenhum vídeo')"></span>
+                </div>
               </div>
             </div>
+          </div>
+
+          <div class="local-server-status" x-cloak>
+            <template x-if="localServerAvailable">
+              <span class="local-server-badge local-server-badge--online" title="Servidor local de mídia ativo">
+                <span class="local-server-badge__dot local-server-badge__dot--green"></span>
+                Reverso Media <small>(local)</small>
+              </span>
+            </template>
+            <template x-if="!localServerAvailable && !localServerChecking">
+              <details class="local-server-offline">
+                <summary class="local-server-badge local-server-badge--offline" title="Servidor local de mídia inativo">
+                  <span class="local-server-badge__dot local-server-badge__dot--red"></span>
+                  Reverso Media offline
+                </summary>
+                <div class="local-server-offline__card">
+                  <p>Para usar as automações de YouTube e Pixieset, inicie o servidor local:</p>
+                  <ol>
+                    <li>Abra a pasta do projeto no seu computador</li>
+                    <li>Dê duplo clique em <strong>Iniciar Reverso Media.bat</strong> (Windows) ou <strong>Iniciar Reverso Media.command</strong> (Mac)</li>
+                    <li>Aguarde a mensagem "Reverso Media Server rodando"</li>
+                  </ol>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="_checkLocalServer()">Verificar novamente</button>
+                </div>
+              </details>
+            </template>
           </div>
 
           <label class="field-label">YouTube</label>
           <input type="url" x-model="form.youtube_url" class="input" placeholder="https://youtube.com/..." />
 
-          <div x-show="!editorLoading && youtubeIframeBlockVisible" x-cloak class="yt-iframe-dock">
+          <div x-show="!editorLoading && youtubePreviewVisible" x-cloak class="yt-iframe-dock">
             <h3 class="yt-iframe-dock__title">Pré-visualização do vídeo (YouTube)</h3>
             <p class="yt-iframe-dock__note">
-              <strong>Passo a passo:</strong> posicione a linha do tempo onde quiser capturar quadros;
+              Posicione a linha do tempo onde quiser capturar quadros;
               salve como <em>instante da capa</em> e como <em>início do clipe de 5&nbsp;s</em>; clique em
-              <strong>Gerar capa e prévia</strong>. Em seguida use <strong>Salvar</strong> neste editor e
-              <strong>Publicar</strong> no topo para enviar as alterações ao servidor.
-              O player abre pausado para facilitar a escolha do quadro — use ▶ apenas se precisar assistir ao trecho.
+              <strong>Gerar capa e prévia</strong>. Em seguida use <strong>Salvar</strong> e
+              <strong>Publicar</strong> para enviar as alterações ao servidor.
             </p>
             <div class="yt-iframe-dock__row">
               <div class="yt-iframe-dock__col yt-iframe-dock__col--player">
-                <p class="yt-iframe-dock__status" x-show="ytPlayerIniting">Carregando o vídeo&hellip;</p>
-                <div id="yt-iframe-admin-host" class="yt-iframe-dock__player-host"></div>
+                <p class="yt-iframe-dock__status" x-show="ytLocalPreviewLoading" x-cloak>Baixando preview do vídeo&hellip;</p>
+                <video id="yt-local-video" class="yt-local-video"
+                       x-show="ytLocalPreviewUrl && !ytLocalPreviewLoading" x-cloak
+                       muted preload="auto"
+                       @loadedmetadata="onLocalVideoLoaded()"
+                       @error="ytLocalPreviewUrl = null; _toast('Erro ao carregar preview do vídeo.', 'error')">
+                </video>
               </div>
-              <div class="yt-iframe-dock__col yt-iframe-dock__col--tools" x-show="!ytPlayerIniting" x-cloak>
-                <label class="yt-iframe-dock__portrait" x-show="!isYoutubeUrlShortsFormat" x-cloak>
-                  <input type="checkbox" x-model="ytPreviewPortrait" @change="_initYoutubePlayerPanel()" />
-                  <span>Área 9:16 (vídeo vertical; marque se o link não for <code>/shorts/</code>)</span>
-                </label>
+              <div class="yt-iframe-dock__col yt-iframe-dock__col--tools"
+                   x-show="ytLocalPreviewUrl && !ytLocalPreviewLoading" x-cloak>
                 <label class="field-label">Posição na linha do tempo</label>
                 <input type="range" class="input yt-iframe-dock__range" min="0"
                        :max="Math.max(0.1, (ytPlayerDuration || 0.1) - 0.02)" step="0.1" x-model.number="ytScrubTime"
                        @input="onYtScrubInput()"
-                       :disabled="ytPlayerIniting || (ytPlayerDuration < 0.1)" />
-                <p class="yt-iframe-dock__hint" x-show="ytPlayerDuration < 0.1 && !ytPlayerIniting">
+                       :disabled="ytPlayerDuration < 0.1" />
+                <p class="yt-iframe-dock__hint" x-show="ytPlayerDuration < 0.1">
                   Obtendo duração do vídeo&hellip;
                 </p>
                 <div class="yt-iframe-dock__actions">
                   <button type="button" class="btn btn-secondary"
-                          :disabled="ytPlayerIniting || ytPlayerDuration < 0.1"
+                          :disabled="ytPlayerDuration < 0.1"
                           @click="applyYoutubeThumbTime()">Salvar posição para capa</button>
                   <button type="button" class="btn btn-secondary"
-                          :disabled="ytPlayerIniting || ytPlayerDuration < 0.1"
+                          :disabled="ytPlayerDuration < 0.1"
                           @click="applyYoutubePreviewStart()">Salvar posição para início do clipe (5&nbsp;s)</button>
                 </div>
                 <div class="yt-iframe-dock__actions" style="margin-top:0.6rem;align-items:center">
                   <button type="button" class="btn btn-primary"
-                          :disabled="ytIngestBusy || publishing || isNew || !((form.youtube_url || '').trim())"
+                          :disabled="ytIngestBusy || publishing || !((form.youtube_url || '').trim())"
                           @click="ingestYoutubeFromPanel()"
-                          title="Gera de novo a capa (JPEG) e o vídeo de prévia (5 s) a partir do YouTube.">
+                          title="Gera capa e prévia localmente (yt-dlp + ffmpeg)">
                     <span x-show="!ytIngestBusy">Gerar capa e prévia</span>
-                    <span x-show="ytIngestBusy">Iniciando&hellip;</span>
+                    <span x-show="ytIngestBusy">Gerando localmente&hellip;</span>
                   </button>
-                  <a x-show="ytIngestLastRunUrl" x-cloak
-                     :href="ytIngestLastRunUrl" target="_blank" rel="noopener"
-                     class="btn btn-secondary"
-                     title="Abre o histórico de execuções no GitHub em uma nova aba.">
-                    Ver execuções no GitHub ↗
-                  </a>
-                  <small x-show="ytIngestLastRunAt" x-cloak
-                         style="color:var(--text-2); font-size:0.78rem">
-                    Última execução: <span x-text="new Date(ytIngestLastRunAt).toLocaleString('pt-BR')"></span>
-                  </small>
+                  <button type="button" class="btn btn-secondary btn-sm"
+                          @click="retryYoutubePlayer()"
+                          title="Recarregar preview do vídeo">Recarregar</button>
                 </div>
-                <p class="yt-iframe-dock__hint" x-show="isNew">
-                  Primeiro salve e publique o projeto — é preciso um slug gravado no servidor.
-                </p>
-                <p class="yt-iframe-dock__hint" x-show="!ytIngestLastRunUrl && !isNew">
-                  Depois de gerar, o link acima passa a mostrar a última execução neste navegador.
-                </p>
                 <p class="yt-iframe-dock__readout">
                   Instante da capa: <strong x-text="formatYoutubeSec(form.youtube_thumb_time_sec)"></strong>
                   &nbsp;|&nbsp; Início do clipe (5&nbsp;s): <strong x-text="formatYoutubeSec(form.youtube_preview_start_sec)"></strong>

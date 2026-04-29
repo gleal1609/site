@@ -2,6 +2,114 @@
  * Alpine.js data and methods for the Projects page
  * Listagem: sempre por date_mmddyyyy (mais recente primeiro), após filtros Buscar + Tipos de serviço.
  */
+
+/**
+ * Códigos curtos na URL (iniciais por palavra; caracteres especiais ignorados).
+ * Resolve colisões e evita ambiguidade por prefixo (ex.: E vs EC).
+ */
+function stripDiacritics(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+}
+
+function lettersCompact(name) {
+  return stripDiacritics(name).replace(/[^A-Za-z]/g, '').toUpperCase();
+}
+
+function preferredInitials(name) {
+  const parts = stripDiacritics(name)
+    .split(/[\s&/–—,.]+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  let code = '';
+  for (const part of parts) {
+    if (/^\d+$/.test(part)) continue;
+    const m = part.match(/[A-Za-z]/);
+    if (m) code += m[0].toUpperCase();
+  }
+  const c = lettersCompact(name);
+  if (!code && c) return c[0];
+  return code;
+}
+
+function hasPrefixConflict(candidate, codes) {
+  const up = candidate.toUpperCase();
+  for (const u of codes) {
+    if (!u) continue;
+    if (u === up) return true;
+    if (u.startsWith(up) || up.startsWith(u)) return true;
+  }
+  return false;
+}
+
+function buildServiceUrlMaps(labels) {
+  const sorted = [
+    ...new Set(labels.map((x) => String(x || '').trim()).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  const labelToCode = new Map();
+  const assigned = [];
+
+  const rows = sorted.map((label) => ({
+    label,
+    pref: preferredInitials(label),
+    compact: lettersCompact(label),
+  }));
+
+  rows.sort((a, b) => {
+    if (b.pref.length !== a.pref.length) return b.pref.length - a.pref.length;
+    return a.label.localeCompare(b.label, 'pt-BR');
+  });
+
+  for (const { label, pref, compact } of rows) {
+    if (!compact) {
+      const code = `S${labelToCode.size + 1}`;
+      assigned.push(code);
+      labelToCode.set(label, code);
+      continue;
+    }
+
+    let chosen = null;
+
+    if (pref && !hasPrefixConflict(pref, assigned)) {
+      chosen = pref.toUpperCase();
+    }
+
+    if (!chosen) {
+      let n = Math.max(pref.length || 1, 1);
+      while (n <= compact.length) {
+        const cand = compact.slice(0, n);
+        if (!hasPrefixConflict(cand, assigned)) {
+          chosen = cand;
+          break;
+        }
+        n += 1;
+      }
+    }
+
+    if (!chosen) {
+      let base = (pref && pref.slice(0, 3)) || compact.slice(0, 3);
+      let i = 2;
+      while (hasPrefixConflict(`${base}${i}`, assigned)) i += 1;
+      chosen = `${base}${i}`;
+    }
+
+    assigned.push(chosen);
+    labelToCode.set(label, chosen);
+  }
+
+  const toCode = {};
+  const fromCode = {};
+  labelToCode.forEach((code, label) => {
+    const k = String(code).toUpperCase();
+    toCode[label] = k;
+    fromCode[k] = label;
+  });
+
+  return { toCode, fromCode };
+}
+
 function projectsPage(projectsJsonUrl) {
   return {
     allProjects: [],
@@ -16,11 +124,13 @@ function projectsPage(projectsJsonUrl) {
 
     availableServiceTypes: [],
 
+    /** label canónico → código URL (ex. "ANIMAÇÃO & MOTION GRAPHICS" → "AMG") */
+    _serviceToUrlCode: {},
+    /** código URL → label (maiúsculas) */
+    _urlCodeToService: {},
+
     urlSyncTimer: null,
 
-    /**
-     * MMDDYYYY (8 chars) → chave YYYYMMDD para ordenação correcta
-     */
     _dateSortKey(s) {
       const raw = String(s || '').replace(/\D/g, '');
       if (raw.length !== 8) return '00000000';
@@ -39,6 +149,54 @@ function projectsPage(projectsJsonUrl) {
         const sb = b.slug || b.url || '';
         return sa.localeCompare(sb, 'pt-BR');
       });
+    },
+
+    _unescapeUrlToken(raw) {
+      let v = String(raw || '');
+      for (let i = 0; i < 4; i++) {
+        try {
+          const d = decodeURIComponent(v.replace(/\+/g, ' '));
+          if (d === v) break;
+          v = d;
+        } catch (_) {
+          break;
+        }
+      }
+      return v;
+    },
+
+    /**
+     * Associa string da URL ao nome completo do serviço (URLs antigas com nome + percent-encoding).
+     */
+    _matchServiceTypeFromUrl(raw, allowedSet) {
+      let v = String(raw || '').trim();
+      if (!v) return null;
+      if (allowedSet.has(v)) return v;
+      for (let i = 0; i < 4; i++) {
+        try {
+          const d = decodeURIComponent(v.replace(/\+/g, ' '));
+          if (d === v) break;
+          v = d.trim();
+          if (allowedSet.has(v)) return v;
+        } catch (_) {
+          break;
+        }
+      }
+      return null;
+    },
+
+    /**
+     * Resolve um token do hash: código curto, nome completo ou legado codificado.
+     */
+    _resolveServiceCandidate(raw, allowedSet) {
+      const v = String(raw || '').trim();
+      if (!v) return null;
+      if (allowedSet.has(v)) return v;
+
+      const fromCode = this._urlCodeToService[v.toUpperCase()];
+      if (fromCode && allowedSet.has(fromCode)) return fromCode;
+
+      return this._matchServiceTypeFromUrl(v, allowedSet);
     },
 
     async init() {
@@ -75,29 +233,50 @@ function projectsPage(projectsJsonUrl) {
     },
 
     /**
-     * URL hash: #search=...&service=...
-     * Parâmetros antigos (year, sort) são ignorados.
+     * Hash: #search=... opcional;
+     *   - #service=AMG (código curto) ou nome completo (legado / links Jekyll)
+     *   - #services=AMG,AC,EC (vários códigos, separados por vírgula)
+     * Legado: #services= com | entre nomes; #service= repetido; codificação dupla.
      */
     applyUrlFilters() {
-      if (window.location.hash) {
-        const hash = window.location.hash.substring(1);
-        const params = new URLSearchParams(hash);
+      if (!window.location.hash || window.location.hash.length <= 1) return;
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
 
-        const searchParam = params.get('search');
-        if (searchParam) {
-          this.searchTerm = decodeURIComponent(searchParam);
-        }
+      const searchParam = params.get('search');
+      if (searchParam) {
+        this.searchTerm = this._unescapeUrlToken(searchParam);
+      }
 
-        const serviceParams = params.getAll('service');
-        if (serviceParams.length > 0) {
-          this.selectedServiceTypes = serviceParams
-            .map((param) => decodeURIComponent(param))
-            .filter((service) => this.availableServiceTypes.includes(service));
-        }
+      const bundled = params.get('services');
+      const legacyRepeated = params.getAll('service');
+      const candidates = [];
 
-        if (searchParam || serviceParams.length > 0) {
-          this.updateFilters();
+      if (bundled) {
+        bundled.split(/[|,]/).forEach((s) => {
+          const t = s.trim();
+          if (t) candidates.push(t);
+        });
+      }
+      legacyRepeated.forEach((s) => {
+        const t = (s || '').trim();
+        if (t) candidates.push(t);
+      });
+
+      const allowed = new Set(this.availableServiceTypes);
+      const resolved = [];
+      const seen = new Set();
+      candidates.forEach((c) => {
+        const norm = this._resolveServiceCandidate(c, allowed);
+        if (norm && !seen.has(norm)) {
+          seen.add(norm);
+          resolved.push(norm);
         }
+      });
+      this.selectedServiceTypes = resolved;
+
+      if (searchParam || candidates.length > 0) {
+        this.updateFilters();
       }
     },
 
@@ -115,6 +294,20 @@ function projectsPage(projectsJsonUrl) {
       });
 
       this.availableServiceTypes = Array.from(serviceTypesSet).sort();
+      const maps = buildServiceUrlMaps(this.availableServiceTypes);
+      this._serviceToUrlCode = maps.toCode;
+      this._urlCodeToService = maps.fromCode;
+    },
+
+    toggleServiceType(serviceType) {
+      const sel = this.selectedServiceTypes;
+      const i = sel.indexOf(serviceType);
+      if (i === -1) {
+        this.selectedServiceTypes = [...sel, serviceType];
+      } else {
+        this.selectedServiceTypes = sel.filter((s) => s !== serviceType);
+      }
+      this.updateFilters();
     },
 
     updateFilters() {
@@ -134,8 +327,8 @@ function projectsPage(projectsJsonUrl) {
           }
           return this.selectedServiceTypes.some((selectedType) =>
             project.service_types.some(
-              (projectType) => projectType && projectType.trim() === selectedType
-            )
+              (projectType) => projectType && projectType.trim() === selectedType,
+            ),
           );
         });
       }
@@ -155,12 +348,17 @@ function projectsPage(projectsJsonUrl) {
         const params = new URLSearchParams();
 
         if (this.searchTerm.trim()) {
-          params.set('search', encodeURIComponent(this.searchTerm.trim()));
+          params.set('search', this.searchTerm.trim());
         }
 
-        this.selectedServiceTypes.forEach((serviceType) => {
-          params.append('service', encodeURIComponent(serviceType));
-        });
+        const types = this.selectedServiceTypes;
+        const enc = (label) => this._serviceToUrlCode[label] || label;
+
+        if (types.length === 1) {
+          params.set('service', enc(types[0]));
+        } else if (types.length > 1) {
+          params.set('services', types.map(enc).join(','));
+        }
 
         const newHash = params.toString();
         const newUrl = newHash ? `#${newHash}` : '';

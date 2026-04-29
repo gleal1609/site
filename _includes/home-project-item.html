@@ -6,7 +6,7 @@
         {% assign proj_url = project.slug | prepend: "/projects/" | append: "/" %}
       {% endif %}
       {% if project.service_types %}{% capture _svcjson %}{{ project.service_types | jsonify }}{% endcapture %}{% else %}{% assign _svcjson = '[]' %}{% endif %}
-      <a href="{{ proj_url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-home-col="{{ dcol }}" data-order="{{ project.order | default: 0 }}" data-services="{{ _svcjson | replace: '"', '&quot;' }}">
+      <a href="{{ proj_url | relative_url }}" class="project-item" aria-label="{{ project.title }}" data-project-title="{{ project.title }}" data-size="{{ project.home_size | default: '1x1' }}" data-home-col="{{ dcol }}" data-order="{{ project.order | default: 0 }}" data-date="{{ project.date_mmddyyyy | default: '' }}" data-services="{{ _svcjson | replace: '"', '&quot;' }}">
       <div class="project-thumbnail-container">
         {% assign _thumb = project.thumbnail | strip %}
         {% assign _hover = project.hover_preview | strip %}
