@@ -511,35 +511,10 @@
           <label class="field-label">Pixieset</label>
           <input type="url" x-model="form.pixieset_url" class="input" placeholder="https://…pixieset.com/nome-da-galeria/" />
 
-          <div x-show="!pixiesetCidNeeded" x-cloak>
-            <p class="field-hint" style="margin:0.35rem 0 0.5rem; font-size:0.75rem; color:var(--text-2); line-height:1.45">
-              Cole o link público da galeria e clique para gerar a capa e/ou o vídeo.
-            </p>
-          </div>
-
-          <div x-show="pixiesetCidNeeded" x-cloak class="yt-iframe-dock pixieset-manual-dock">
-            <h4 style="margin:0 0 0.5rem; font-size:0.85rem; font-weight:700; color:var(--accent)">
-              Identificação manual necessária
-            </h4>
-            <p class="field-hint" style="margin:0 0 0.5rem; font-size:0.78rem; color:var(--text-2); line-height:1.5">
-              O Pixieset bloqueou o acesso automático. Cole abaixo a <strong>URL completa</strong> do pedido
-              <code>loadphotos</code> da galeria (o sistema extrai o que precisa a partir dessa URL):
-            </p>
-            <ol style="margin:0 0 0.6rem 1.1rem; font-size:0.78rem; color:var(--text-2); line-height:1.65; padding:0">
-              <li>
-                <button type="button" class="btn-link" style="font-size:0.78rem"
-                        @click="window.open((form.pixieset_url || '').trim(), '_blank')"
-                        :disabled="!((form.pixieset_url || '').trim())">Abra a galeria em nova aba ↗</button>
-              </li>
-              <li>Na galeria aberta, pressione <strong>F12</strong> → aba <strong>Rede</strong> → filtre por <code>loadphotos</code></li>
-              <li>Role a página da galeria para que o pedido apareça na lista</li>
-              <li>Clique com o <strong>botão direito</strong> no pedido <code>loadphotos</code> → <strong>Copiar</strong> → <strong>Copiar URL</strong></li>
-              <li>Cole a URL no campo abaixo e use de novo um dos botões <strong>Gerar</strong></li>
-            </ol>
-            <input type="url" x-model="pixiesetCidOverride" class="input"
-                   placeholder="Cole aqui a URL completa do pedido …/client/loadphotos/?cuk=…"
-                   autocomplete="off" />
-          </div>
+          <p class="field-hint" style="margin:0.35rem 0 0.5rem; font-size:0.75rem; color:var(--text-2); line-height:1.45">
+            Cole o link público da galeria e clique para gerar a capa e/ou o vídeo.
+            A resolução usa um browser automático (pode levar alguns segundos).
+          </p>
 
           <div class="editor-pixieset-import">
             <button type="button" class="btn btn-secondary" :disabled="pixiesetBusy || !((form.pixieset_url || '').trim())"

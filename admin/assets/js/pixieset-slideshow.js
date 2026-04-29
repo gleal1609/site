@@ -70,7 +70,7 @@
     const images = await Promise.all(
       list.map(async (u) => {
         const pUrl = await Promise.resolve(buildProxy(u));
-        const res = await fetch(pUrl, { credentials: 'include' });
+        const res = await fetch(pUrl);
         if (!res.ok) throw new Error(`Falha ao carregar imagem (${res.status})`);
         const blob = await res.blob();
         return createImageBitmap(blob);

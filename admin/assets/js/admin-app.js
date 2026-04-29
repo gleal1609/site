@@ -161,10 +161,8 @@ function adminApp() {
     _lastYtVideoId: null,
     /** Estado do botão «Gerar capa e prévia» para evitar duplos cliques. */
     ytIngestBusy: false,
-    /** Importação Pixieset — capa + slideshow (Worker resolve + proxy) */
+    /** Importação Pixieset — capa + slideshow */
     pixiesetBusy: false,
-    pixiesetCidOverride: '',
-    pixiesetCidNeeded: false,
     /** Servidor local de mídia (localhost:7847) */
     localServerAvailable: false,
     localServerChecking: false,
@@ -774,8 +772,6 @@ function adminApp() {
       this.form = {};
       this.isNew = false;
       this.formDirty = false;
-      this.pixiesetCidOverride = '';
-      this.pixiesetCidNeeded = false;
       this._clearUploads();
     },
 
@@ -1358,8 +1354,7 @@ function adminApp() {
 
       this.pixiesetBusy = true;
       try {
-        const data = await LS.resolvePixieset(galleryUrl, this.pixiesetCidOverride || undefined);
-        this.pixiesetCidNeeded = false;
+        const data = await LS.resolvePixieset(galleryUrl);
         if (which === 'thumb' || which === 'both') {
           if (!data.cover) {
             throw new Error('Não foi possível obter a imagem de capa.');
@@ -1406,16 +1401,7 @@ function adminApp() {
         this.formDirty = true;
       } catch (e) {
         const msg = (e && e.message) || '';
-        const isCidError = /cid|cloudflare|coleção|loadphotos/i.test(msg);
-        if (isCidError && !this.pixiesetCidOverride) {
-          this.pixiesetCidNeeded = true;
-          this._toast(
-            'Não foi possível acessar a galeria automaticamente. Cole abaixo a URL do pedido «loadphotos» (ou só o número cid) e tente de novo.',
-            'warning',
-          );
-        } else {
-          this._toast(msg || 'Falha ao importar do Pixieset.', 'error');
-        }
+        this._toast(msg || 'Falha ao importar do Pixieset.', 'error');
       } finally {
         this.pixiesetBusy = false;
       }

@@ -257,25 +257,8 @@ async function handleCacheFile(req, res) {
 }
 
 // ---------------------------------------------------------------------------
-// Pixieset resolve (ported from cf-worker/src/routes/pixieset.js)
+// Pixieset resolve (Puppeteer — browser real bypassa Cloudflare)
 // ---------------------------------------------------------------------------
-
-const UA_FIREFOX = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0';
-const UA_CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
-
-function browserHeaders(ua) {
-  return {
-    'User-Agent': ua,
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Sec-Fetch-User': '?1',
-    'Upgrade-Insecure-Requests': '1',
-    'DNT': '1',
-  };
-}
 
 function isPixiesetPageUrl(href) {
   try {
@@ -286,34 +269,6 @@ function isPixiesetPageUrl(href) {
     if (segs.length < 1) return null;
     return u;
   } catch { return null; }
-}
-
-function cukFromUrl(u) {
-  const segs = u.pathname.split('/').filter(Boolean);
-  return segs[segs.length - 1] || null;
-}
-
-function extractCid(html) {
-  const patterns = [
-    /"cid"\s*:\s*(\d+)/, /"cid"\s*:\s*"(\d+)"/,
-    /"collectionId"\s*:\s*(\d+)/i, /"collectionId"\s*:\s*"(\d+)"/i,
-    /collection_id["']?\s*:\s*["']?(\d+)/i, /[?&]cid=(\d+)/i,
-    /data-collection-id=["'](\d+)["']/i, /%22cid%22%3A%22(\d+)%22/i,
-  ];
-  for (const p of patterns) { const m = html.match(p); if (m) return m[1]; }
-  return null;
-}
-
-function extractGsFromHtml(html) {
-  const m = html.match(/"gs"\s*:\s*"([^"\\]+)"/i);
-  return m ? m[1] : null;
-}
-
-function isLikelyCloudflareBlock(html) {
-  return (
-    (html.length < 12000 && /just a moment|cf-mitigation|challenges\.cloudflare/i.test(html)) ||
-    html.includes('__cf_chl')
-  );
 }
 
 function toHttpsUrl(maybe) {
@@ -327,60 +282,6 @@ function toHttpsUrl(maybe) {
 function pickPathFromPhoto(photo) {
   for (const k of ['pathXxlarge', 'pathXlarge', 'pathLarge', 'pathMedium', 'pathSmall', 'pathThumb']) {
     if (photo[k] && typeof photo[k] === 'string' && photo[k].length > 2) return toHttpsUrl(photo[k]);
-  }
-  return null;
-}
-
-function buildGsAttempts(gs) {
-  const a = [];
-  for (const g of [gs, 'highlights', 'all', 'default']) { if (g && !a.includes(g)) a.push(g); }
-  return a;
-}
-
-function buildLoadPhotosUrl(domain, cuk, cid, gs, page) {
-  const base = new URL(`https://${domain}/client/loadphotos/`);
-  base.searchParams.set('cuk', cuk);
-  base.searchParams.set('cid', String(cid));
-  base.searchParams.set('gs', gs || 'highlights');
-  base.searchParams.set('fk', '');
-  base.searchParams.set('clientDownloads', 'false');
-  base.searchParams.set('page', String(page));
-  return base.toString();
-}
-
-async function mergeLoadPhotosPages(domain, cuk, cid, cookie, referer, attempts) {
-  for (const g of attempts) {
-    const merged = [];
-    for (let page = 1; page <= 8; page++) {
-      const loadUrl = buildLoadPhotosUrl(domain, cuk, cid, g, page);
-      const headers = {
-        'User-Agent': UA_CHROME,
-        Accept: 'application/json, text/plain, */*',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-        Referer: referer,
-        'X-Requested-With': 'XMLHttpRequest',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin',
-      };
-      if (cookie) headers.Cookie = cookie;
-      try {
-        const r = await fetch(loadUrl, { headers, redirect: 'follow' });
-        if (!r.ok) break;
-        const j = await r.json().catch(() => null);
-        if (!j || j.status === 'error') break;
-        let content;
-        try { content = JSON.parse(j.content || '[]'); } catch { break; }
-        if (Array.isArray(content) && content.length) {
-          merged.push(...content);
-          if (j.isLastPage === true || j.islastpage === true) break;
-          if (merged.length >= 24) break;
-          continue;
-        }
-      } catch { /* network error */ }
-      break;
-    }
-    if (merged.length) return { photos: merged, usedGs: g };
   }
   return null;
 }
@@ -406,87 +307,191 @@ function buildCoverAndSlides(photos) {
   return out;
 }
 
-function parseCidAndGsFromField(raw) {
-  if (raw == null) return { cid: null, gs: null };
-  const t = String(raw).trim();
-  if (!t) return { cid: null, gs: null };
-  if (/^\d{1,20}$/.test(t)) return { cid: t, gs: null };
-  if (/^https?:\/\//i.test(t)) {
-    try {
-      const u = new URL(t);
-      const c = u.searchParams.get('cid');
-      const gs = u.searchParams.get('gs');
-      return {
-        cid: c && /^\d+$/.test(c) ? c : null,
-        gs: gs && String(gs).length ? String(gs) : null,
-      };
-    } catch { return { cid: null, gs: null }; }
+let _puppeteer = null;
+async function getPuppeteer() {
+  if (!_puppeteer) {
+    _puppeteer = (await import('puppeteer')).default;
   }
-  return { cid: null, gs: null };
+  return _puppeteer;
 }
 
-function setCookieHeader(res) {
-  const raw = res.headers.raw?.()?.['set-cookie'];
-  if (Array.isArray(raw) && raw.length) {
-    return raw.map((c) => c.split(';')[0].trim()).filter(Boolean).join('; ');
-  }
-  const c = res.headers.get('set-cookie');
-  return c ? c.split(';')[0].trim() : '';
-}
-
-async function resolvePixieset(galleryUrl, cidOverride) {
+async function resolvePixieset(galleryUrl) {
   const u = isPixiesetPageUrl(galleryUrl);
   if (!u) throw new Error('URL Pixieset inválida');
 
-  const domain = u.hostname;
-  const cuk = cukFromUrl(u);
-  if (!cuk) throw new Error('Falta o caminho da coleção no URL');
+  const puppeteer = await getPuppeteer();
+  console.log('[pixieset] Abrindo browser...');
 
-  const ref = u.toString();
-  const parsedCid = parseCidAndGsFromField(cidOverride);
+  const browser = await puppeteer.launch({
+    headless: 'new',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--window-size=1280,900',
+    ],
+  });
 
-  if (parsedCid.cid) {
-    const attempts0 = buildGsAttempts(parsedCid.gs);
-    const got = await mergeLoadPhotosPages(domain, cuk, parsedCid.cid, '', ref, attempts0);
-    if (got) return buildCoverAndSlides(got.photos);
-    throw new Error('loadphotos não retornou fotos com o cid fornecido');
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 900 });
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    );
+
+    const allPhotos = [];
+    const interceptedUrls = [];
+
+    page.on('response', async (response) => {
+      try {
+        const reqUrl = response.url();
+        if (reqUrl.includes('loadphotos')) {
+          interceptedUrls.push({ url: reqUrl, status: response.status() });
+          if (response.status() !== 200) {
+            console.log(`[pixieset] loadphotos interceptado HTTP ${response.status()}`);
+            return;
+          }
+          const json = await response.json().catch(() => null);
+          if (!json) return;
+          let content;
+          try { content = JSON.parse(json.content || '[]'); } catch { return; }
+          if (Array.isArray(content) && content.length) {
+            allPhotos.push(...content);
+            console.log(`[pixieset] Interceptado loadphotos — ${content.length} foto(s) (total: ${allPhotos.length})`);
+          }
+        }
+      } catch { /* response body already consumed */ }
+    });
+
+    console.log(`[pixieset] Navegando para ${u.toString()}...`);
+    const resp = await page.goto(u.toString(), { waitUntil: 'domcontentloaded', timeout: 45000 });
+    console.log(`[pixieset] Status HTTP: ${resp?.status()}`);
+
+    const isCfChallenge = await page.evaluate(() =>
+      document.title.includes('Just a moment') ||
+      !!document.querySelector('#challenge-running, #cf-challenge-running'),
+    );
+
+    if (isCfChallenge) {
+      console.log('[pixieset] Cloudflare challenge detectado, aguardando resolução (até 20s)...');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 25000 }).catch(() => {});
+      const stillCf = await page.evaluate(() =>
+        document.title.includes('Just a moment') ||
+        !!document.querySelector('#challenge-running, #cf-challenge-running'),
+      );
+      if (stillCf) {
+        console.log('[pixieset] Challenge não resolvido automaticamente.');
+      } else {
+        console.log('[pixieset] Challenge resolvido, página real carregada.');
+      }
+    } else {
+      await page.waitForNetworkIdle({ idleTime: 2000, timeout: 15000 }).catch(() => {});
+    }
+
+    const pageTitle = await page.title();
+    const pageUrl = page.url();
+    console.log(`[pixieset] Título: "${pageTitle}" | URL: ${pageUrl}`);
+
+    if (allPhotos.length === 0) {
+      console.log('[pixieset] Nenhum loadphotos ainda — rolando a página...');
+      await autoScroll(page);
+      await page.waitForNetworkIdle({ idleTime: 2000, timeout: 10000 }).catch(() => {});
+    }
+
+    if (allPhotos.length > 0) {
+      console.log(`[pixieset] ${allPhotos.length} foto(s) via loadphotos`);
+      return buildCoverAndSlides(allPhotos);
+    }
+
+    console.log('[pixieset] Tentando extrair imagens do DOM (img, background-image, source)...');
+    const domPhotos = await page.evaluate(() => {
+      const urls = new Set();
+
+      document.querySelectorAll('img').forEach((img) => {
+        for (const attr of ['src', 'data-src', 'data-lazy-src', 'data-original']) {
+          const v = img.getAttribute(attr);
+          if (v && v.length > 10 && /\.(jpe?g|png|webp)/i.test(v)) urls.add(v);
+        }
+        if (img.srcset) {
+          img.srcset.split(',').forEach((entry) => {
+            const src = entry.trim().split(/\s+/)[0];
+            if (src && /\.(jpe?g|png|webp)/i.test(src)) urls.add(src);
+          });
+        }
+      });
+
+      document.querySelectorAll('source[srcset]').forEach((s) => {
+        s.srcset.split(',').forEach((entry) => {
+          const src = entry.trim().split(/\s+/)[0];
+          if (src && /\.(jpe?g|png|webp)/i.test(src)) urls.add(src);
+        });
+      });
+
+      document.querySelectorAll('[style*="background"]').forEach((el) => {
+        const match = el.style.backgroundImage?.match(/url\(["']?(.+?)["']?\)/);
+        if (match && /\.(jpe?g|png|webp)/i.test(match[1])) urls.add(match[1]);
+      });
+
+      const computed = document.querySelectorAll('.photo, .gallery-photo, .collection-photo, [class*="photo"], [class*="image"], [class*="thumb"]');
+      computed.forEach((el) => {
+        const bg = getComputedStyle(el).backgroundImage;
+        const match = bg?.match(/url\(["']?(.+?)["']?\)/);
+        if (match && /\.(jpe?g|png|webp)/i.test(match[1])) urls.add(match[1]);
+      });
+
+      return [...urls];
+    });
+
+    if (domPhotos.length) {
+      console.log(`[pixieset] ${domPhotos.length} imagem(ns) extraída(s) do DOM`);
+      const normalized = domPhotos.map((s) => {
+        if (s.startsWith('//')) return `https:${s}`;
+        return s;
+      });
+      return { cover: normalized[0], slides: normalized.slice(0, 5) };
+    }
+
+    const debugDir = join(dirname(fileURLToPath(import.meta.url)), '.cache');
+    await mkdir(debugDir, { recursive: true });
+    const ssPath = join(debugDir, 'pixieset-debug.png');
+    await page.screenshot({ path: ssPath, fullPage: true });
+    const htmlSnippet = await page.evaluate(() => document.documentElement.outerHTML.substring(0, 3000));
+    console.log('[pixieset] Screenshot salvo em:', ssPath);
+    console.log('[pixieset] HTML parcial (3000 chars):\n', htmlSnippet);
+    console.log('[pixieset] loadphotos interceptados:', interceptedUrls.length ? JSON.stringify(interceptedUrls) : 'nenhum');
+
+    throw new Error(
+      `Não foi possível obter fotos. Verifique o screenshot em ${ssPath} para diagnóstico.`,
+    );
+  } finally {
+    await browser.close().catch(() => {});
   }
+}
 
-  const strategies = [
-    browserHeaders(UA_CHROME),
-    browserHeaders(UA_FIREFOX),
-    { 'User-Agent': UA_FIREFOX, Accept: 'text/html,*/*' },
-  ];
+async function autoScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      let totalHeight = 0;
+      const distance = 400;
+      const timer = setInterval(() => {
+        window.scrollBy(0, distance);
+        totalHeight += distance;
+        if (totalHeight >= document.body.scrollHeight || totalHeight > 5000) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 200);
+    });
+  });
+}
 
-  let lastHtml = '';
-  let lastCookie = '';
-  let blocked = false;
+const PIXIESET_FETCH_TIMEOUT_MS = 15000;
 
-  for (const headers of strategies) {
-    try {
-      const res = await fetch(ref, { headers, redirect: 'follow' });
-      if (!res.ok) continue;
-      const html = await res.text();
-      if (isLikelyCloudflareBlock(html)) { blocked = true; continue; }
-      lastHtml = html;
-      lastCookie = setCookieHeader(res);
-      break;
-    } catch { continue; }
-  }
-
-  if (!lastHtml && blocked) {
-    throw new Error('Cloudflare bloqueou o acesso. Cole o cid/URL loadphotos no campo manual.');
-  }
-  if (!lastHtml) throw new Error('Falha ao abrir a galeria');
-
-  const cid = extractCid(lastHtml);
-  if (!cid) throw new Error('Não foi possível extrair o cid da página');
-
-  const gs = extractGsFromHtml(lastHtml);
-  const attempts = buildGsAttempts(gs);
-  const got = await mergeLoadPhotosPages(domain, cuk, cid, lastCookie, ref, attempts);
-  if (got) return buildCoverAndSlides(got.photos);
-  throw new Error('API de fotos não retornou imagens');
+function fetchWithTimeout(url, opts = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PIXIESET_FETCH_TIMEOUT_MS);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(timer));
 }
 
 // ---------------------------------------------------------------------------
@@ -563,16 +568,29 @@ async function handleIngestYoutube(req, res) {
 
 async function handleResolvePixieset(req, res) {
   const body = await readBody(req);
-  const { gallery_url, cid_override } = body;
+  const { gallery_url } = body;
   if (!gallery_url) return jsonResponse(res, 400, { error: 'gallery_url obrigatório' });
 
+  let clientDisconnected = false;
+  req.on('close', () => { clientDisconnected = true; });
+
   try {
-    console.log('[pixieset] Resolvendo galeria...');
-    const result = await resolvePixieset(gallery_url, cid_override || null);
+    console.log(`[pixieset] Resolvendo galeria: ${gallery_url}`);
+    const result = await resolvePixieset(gallery_url);
     console.log('[pixieset] Concluído —', result.slides?.length || 0, 'slides');
+    if (result.cover) console.log('[pixieset] Cover:', result.cover);
+    if (result.slides?.length) console.log('[pixieset] Slide 0:', result.slides[0]);
+    if (clientDisconnected) {
+      console.log('[pixieset] Cliente desconectou antes da resposta.');
+      return;
+    }
     jsonResponse(res, 200, result);
+    console.log('[pixieset] Resposta enviada ao admin panel.');
   } catch (e) {
-    jsonResponse(res, 422, { error: e.message || 'Falha ao resolver galeria' });
+    console.log(`[pixieset] Erro: ${e.message}`);
+    if (!clientDisconnected) {
+      jsonResponse(res, 422, { error: e.message || 'Falha ao resolver galeria' });
+    }
   }
 }
 
@@ -584,19 +602,26 @@ async function handleProxyPixieset(req, res) {
   try {
     const parsed = new URL(target.trim());
     const h = parsed.hostname.toLowerCase();
-    if (!h.includes('pixieset.com')) {
+    if (!h.includes('pixieset') && !h.includes('picdn.net') && !h.includes('imgix.net')) {
+      console.log(`[proxy-pixieset] Domínio bloqueado: ${h}`);
       return jsonResponse(res, 403, { error: 'Apenas CDNs Pixieset permitidos' });
     }
-    const r = await fetch(parsed.toString(), {
-      headers: { 'User-Agent': UA_FIREFOX, Accept: 'image/*,*/*', Referer: 'https://www.pixieset.com/' },
+    console.log(`[proxy-pixieset] Baixando: ${parsed.toString().substring(0, 120)}...`);
+    const r = await fetchWithTimeout(parsed.toString(), {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0', Accept: 'image/*,*/*', Referer: 'https://www.pixieset.com/' },
       redirect: 'follow',
     });
-    if (!r.ok) return jsonResponse(res, 502, { error: `Pixieset retornou ${r.status}` });
+    if (!r.ok) {
+      console.log(`[proxy-pixieset] HTTP ${r.status}`);
+      return jsonResponse(res, 502, { error: `Pixieset retornou ${r.status}` });
+    }
     const ct = r.headers.get('content-type') || 'image/jpeg';
     const buf = Buffer.from(await r.arrayBuffer());
+    console.log(`[proxy-pixieset] OK — ${buf.length} bytes, ${ct}`);
     res.writeHead(200, { ...corsHeaders(), 'Content-Type': ct, 'Cache-Control': 'public, max-age=3600' });
     res.end(buf);
   } catch (e) {
+    console.log(`[proxy-pixieset] Erro: ${e.message}`);
     jsonResponse(res, 500, { error: e.message });
   }
 }
