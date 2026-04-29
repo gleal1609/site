@@ -84,28 +84,6 @@
 
       <div class="header-right">
         <button type="button"
-                x-show="view === 'home'"
-                class="btn btn-secondary"
-                @click="normalizeHomeOrder()"
-                title="Recalcular valores de ordem (0, 1, 2, …) por coluna e gravar em rascunho">
-          Normalizar ordem
-        </button>
-        <button type="button"
-                x-show="view === 'home'"
-                class="btn btn-secondary"
-                @click="randomizeHomeSizes()"
-                title="Aleatorizar tamanhos 1x1/1x1,5/1x2 e ordem (rascunho) — projetos com «Exibir na Home»">
-          Aleatorizar formatos
-        </button>
-        <button type="button"
-                x-show="view === 'home' && canUndoRandomHomeSizes"
-                class="btn btn-secondary"
-                @click="discardRandomizedHomeSizes()"
-                :disabled="publishing"
-                title="Repor tamanhos/ordem ao estado anterior (rascunho)">
-          Descartar formatos
-        </button>
-        <button type="button"
                 x-show="view === 'projetos'"
                 @click="newProject()" class="btn btn-accent">+ Novo Projeto</button>
         <div class="user-info" x-show="user">
@@ -125,7 +103,7 @@
             <p class="projetos-hint">
               Só entram projetos com «Exibir na Home» (editor). Cada coluna é uma pilha
               (sem buracos). Arraste entre colunas ou dentro da coluna: atualiza
-              <em>coluna</em> (1–5) e <em>order</em> (posição na coluna). «Publicar» grava. Formatos: 1×1, 1×1,5, 1×2.
+              <em>coluna</em> (1–5) e <em>order</em> (posição na coluna, a partir de 1). «Publicar» grava. Formatos: 1×1, 1×1,5, 1×2.
             </p>
           </div>
         </div>

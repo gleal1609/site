@@ -68,7 +68,7 @@ async function importProject(data, body, slug) {
     client: data.client || null,
     date_mmddyyyy: data.date_mmddyyyy ? String(data.date_mmddyyyy) : null,
     year: data.year || null,
-    order: data.order || 0,
+    order: data.order != null && Number(data.order) >= 1 ? Number(data.order) : 1,
     home_size: data.home_size ? String(data.home_size) : '1x1',
     show_on_home: data.show_on_home ? 1 : 0,
     youtube_url: data.youtube_url || null,

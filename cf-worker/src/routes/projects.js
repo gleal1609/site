@@ -60,6 +60,14 @@ function normalizeShowOnHomeDb(v) {
   return 0;
 }
 
+/** Posição dentro da coluna na Home (1 = primeiro); nunca 0. */
+function normalizeHomeOrder(val) {
+  if (val === undefined || val === null || val === '') return 1;
+  const n = typeof val === 'number' ? val : parseInt(String(val), 10);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return 1;
+  return n;
+}
+
 function validate(data, isCreate) {
   const errs = [];
   if (isCreate && !data.title) errs.push('title is required');
@@ -71,7 +79,10 @@ function validate(data, isCreate) {
     errs.push(`description max ${MAX_DESCRIPTION} chars`);
   }
   if (data.year !== undefined && data.year !== null && !Number.isInteger(data.year)) errs.push('year must be integer');
-  if (data.order !== undefined && data.order !== null && !Number.isInteger(data.order)) errs.push('order must be integer');
+  if (data.order !== undefined && data.order !== null && data.order !== '') {
+    const o = typeof data.order === 'number' ? data.order : parseInt(String(data.order), 10);
+    if (!Number.isFinite(o) || !Number.isInteger(o) || o < 1) errs.push('order must be a positive integer');
+  }
   if (data.service_types !== undefined && data.service_types !== null && !Array.isArray(data.service_types)) {
     errs.push('service_types must be an array');
   }
@@ -214,7 +225,7 @@ export async function handleCreate(request, env, ctx) {
     thumbnailVal, hoverVal,
     svcJson, data.client || null, data.date_mmddyyyy || null,
     data.year || null,
-    data.order || 0, homeSize, showHome,
+    normalizeHomeOrder(data.order), homeSize, showHome,
     Number.isInteger(data.home_col) && data.home_col >= 1 && data.home_col <= 5
       ? data.home_col
       : 1,
@@ -302,6 +313,9 @@ export async function handleUpdate(slug, request, env, ctx) {
   }
   if (data.show_on_home !== undefined) {
     data.show_on_home = normalizeShowOnHomeDb(data.show_on_home);
+  }
+  if (data.order !== undefined) {
+    data.order = normalizeHomeOrder(data.order);
   }
 
   const fields = [];
