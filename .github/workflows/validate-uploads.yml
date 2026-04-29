@@ -21,8 +21,9 @@ jobs:
 
       - name: Validate image and video files
         shell: bash
+        # Repo contém vídeos de projeto >25MB; Worker/R2 continuam sendo a fonte preferida para blobs grandes.
         env:
-          MAX_BYTES: 26214400
+          MAX_BYTES: 67108864
         run: |
           set -euo pipefail
           fail=0
@@ -49,7 +50,7 @@ jobs:
             if [[ -f "$f" ]]; then
               sz=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
               if [[ "$sz" -gt "$MAX_BYTES" ]]; then
-                echo "::error file=$f::Arquivo maior que 25MB ($sz bytes)"
+                echo "::error file=$f::Arquivo excede MAX_BYTES (${MAX_BYTES}): $sz bytes"
                 fail=1
               fi
             fi

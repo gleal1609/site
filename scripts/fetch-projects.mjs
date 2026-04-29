@@ -14,7 +14,7 @@ const OUTPUT_SITE_SETTINGS = join(DATA_DIR, 'site-settings.json');
 
 const WORKER_EXPORT_URL =
   process.env.WORKER_EXPORT_URL ||
-  'https://reverso-cms-api.reverso-cms.workers.dev/api/projects/export';
+  'https://reverso-cms-api.reversofilmes.workers.dev/api/projects/export';
 
 function siteSettingsExportUrl() {
   if (process.env.WORKER_SITE_SETTINGS_EXPORT_URL) {
@@ -25,7 +25,7 @@ function siteSettingsExportUrl() {
     u.pathname = '/api/site-settings/export';
     return u.toString();
   } catch {
-    return 'https://reverso-cms-api.reverso-cms.workers.dev/api/site-settings/export';
+    return 'https://reverso-cms-api.reversofilmes.workers.dev/api/site-settings/export';
   }
 }
 
