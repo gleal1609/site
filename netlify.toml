@@ -5,7 +5,7 @@
 [build.environment]
   RUBY_VERSION = "3.3.0"
   # Mesmo host que site.reverso_cms_api + /api/projects/export. Com custom domain cms.*, alinhar meta + CSP abaixo.
-  WORKER_EXPORT_URL = "https://reverso-cms-api.reverso-cms.workers.dev/api/projects/export"
+  WORKER_EXPORT_URL = "https://reverso-cms-api.reversofilmes.workers.dev/api/projects/export"
 
 # Alpine.js avalia x-data / @click / etc. com Function() — exige 'unsafe-eval' em script-src (só neste path).
 [[headers]]

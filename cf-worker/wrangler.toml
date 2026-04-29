@@ -2,10 +2,13 @@ name = "reverso-cms-api"
 main = "src/index.js"
 compatibility_date = "2024-12-01"
 
+# Conta do cliente (Wrangler). Evita deploy na conta errada.
+account_id = "823e1343348a9b1e9d44ccdad8c3540d"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "reverso-db"
-database_id = "26c7fa0e-675c-4693-a186-d0d8f8395f5e"
+database_id = "1fcb3369-0cf6-45e3-85db-8b09aa060d3b"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
@@ -17,12 +20,11 @@ bucket_name = "reverso-media"
 crons = [ "0 3 * * 7", "0 4 * * *" ]
 
 [vars]
-# Em produção (domínio R2 na zona do cliente): https://media.reversofilmes.com.br
-# Demo sem DNS na Cloudflare: defina no Dashboard do Worker → Variables:
-MEDIA_BASE_URL = "https://reverso-cms-api.reverso-cms.workers.dev/media"
-ADMIN_ORIGIN = "https://classy-nougat-5d062d.netlify.app/admin"
-SITE_ORIGIN = "https://classy-nougat-5d062d.netlify.app"
-ALLOWED_ORIGINS = "https://classy-nougat-5d062d.netlify.app,https://admin.reversofilmes.com.br,https://www.reversofilmes.com.br,https://reversofilmes.com.br"
+# Base pública para URLs de ficheiros no R2 (rota /media do Worker). Ajuste após o 1.º deploy se o host workers.dev for diferente.
+MEDIA_BASE_URL = "https://reverso-cms-api.reversofilmes.workers.dev/media"
+ADMIN_ORIGIN = "https://www.reversofilmes.com.br/admin"
+SITE_ORIGIN = "https://www.reversofilmes.com.br"
+ALLOWED_ORIGINS = "https://www.reversofilmes.com.br,https://reversofilmes.com.br"
 # CORS: admin servido de localhost (Jekyll) a chamar a API no Worker (credenciais).
 DEV_ORIGINS = "http://localhost:4000,http://127.0.0.1:4000"
 # Vazio: sessão só no host do Worker (SameSite=None) — necessário para admin em *.netlify.app + API em *.workers.dev.
