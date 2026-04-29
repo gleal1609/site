@@ -32,74 +32,10 @@ const ADMIN_CONFIG = {
   ],
 };
 
-function pickWeightedHomeSize() {
-  const r = Math.random() * 100;
-  if (r < 60) return '1x1';
-  if (r < 80) return '1x2';
-  return '1x1.5';
-}
-
-/**
- * Tamanhos 1x1, 1x1.5, 1x2 (grelha 5 col, uma coluna de largura).
- * Proporção-alvo: 55% 1x1 · 25% 1x2 · 20% 1x1.5. Embaralhado; anti-sequência de 3 iguais.
- */
-function buildBalancedSizePool(n) {
-  if (n <= 0) return [];
-  const targets = { '1x1': 0.55, '1x2': 0.25, '1x1.5': 0.2 };
-  const order = ['1x1', '1x2', '1x1.5'];
-  const counts = {};
-  let assigned = 0;
-  for (const k of order) {
-    counts[k] = Math.round(targets[k] * n);
-    assigned += counts[k];
-  }
-  let drift = n - assigned;
-  const adj = drift > 0 ? ['1x1', '1x2', '1x1.5'] : ['1x1.5', '1x2', '1x1'];
-  let i = 0;
-  while (drift !== 0) {
-    const k = adj[i % adj.length];
-    if (drift > 0) {
-      counts[k] += 1;
-      drift -= 1;
-    } else if (counts[k] > 0) {
-      counts[k] -= 1;
-      drift += 1;
-    }
-    i += 1;
-  }
-  if (n >= 3) {
-    for (const k of order) {
-      if (counts[k] === 0) {
-        const donor = order
-          .slice()
-          .sort((a, b) => counts[b] - counts[a])
-          .find((x) => x !== k && counts[x] > 1);
-        if (donor) {
-          counts[donor] -= 1;
-          counts[k] += 1;
-        }
-      }
-    }
-  }
-
-  const pool = [];
-  for (const k of order) for (let c = 0; c < counts[k]; c++) pool.push(k);
-  for (let j = pool.length - 1; j > 0; j--) {
-    const r = Math.floor(Math.random() * (j + 1));
-    [pool[j], pool[r]] = [pool[r], pool[j]];
-  }
-  for (let k = 2; k < pool.length; k++) {
-    if (pool[k] === pool[k - 1] && pool[k] === pool[k - 2]) {
-      let swap = -1;
-      for (let m = k + 1; m < pool.length; m++) {
-        if (pool[m] !== pool[k]) { swap = m; break; }
-      }
-      if (swap !== -1) {
-        [pool[k], pool[swap]] = [pool[swap], pool[k]];
-      }
-    }
-  }
-  return pool;
+/** Posição na coluna Home (1-based). Valores inválidos/atraso → fim da pilha. */
+function coerceHomeOrderNum(v) {
+  const n = v != null && v !== '' ? Number(v) : NaN;
+  return Number.isFinite(n) && n >= 1 ? n : 999999;
 }
 
 function dateMmddyyyySortKey(p) {
@@ -117,6 +53,12 @@ function truthyShowOnHome(p) {
   return v === true || v === 1 || v === '1';
 }
 
+function displayHomeOrderBadge(p) {
+  const n = p && p.order != null && p.order !== '' ? Number(p.order) : NaN;
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return n;
+}
+
 function adminApp() {
   return {
     authed: false,
@@ -132,13 +74,6 @@ function adminApp() {
     _homeSortableInstances: [],
     /** @type {Record<string, { payload: object, thumbFile: File|null, videoFile: File|null, isNew: boolean, version?: number }>} */
     projectDrafts: {},
-
-    /**
-     * Mapa `slug` → `home_size` a repor com «Descartar formatos» (estado antes da
-     * primeira aleatorização após carga / última publicação).
-     * @type {Record<string, string> | null}
-     */
-    _homeSizeRandomizeSnapshot: null,
 
     editorOpen: false,
     editorLoading: false,
@@ -282,7 +217,6 @@ function adminApp() {
       this.projects = [];
       this.baselineProjects = [];
       this.projectDrafts = {};
-      this._homeSizeRandomizeSnapshot = null;
       this.editorOpen = false;
       this._clearSiteDraftPreview();
       this.siteDraft = null;
@@ -336,13 +270,13 @@ function adminApp() {
       }
     },
 
-    /** 5 colunas: D1 `home_col` 1–5 + order *dentro* da coluna (igual Jekyll; sem vãos). Legado 0–4 = índice. */
+    /** 5 colunas: D1 `home_col` 1–5 + order *dentro* da coluna (1 = primeiro; igual Jekyll). Legado `home_col` 0–4 = índice. */
     get visibleHomeProjectCols() {
       if (this.view !== 'home') return [[], [], [], [], []];
       const arr = this.projects.filter((p) => truthyShowOnHome(p));
       arr.sort((a, b) => {
-        const oa = Number(a.order != null ? a.order : 999999);
-        const ob = Number(b.order != null ? b.order : 999999);
+        const oa = coerceHomeOrderNum(a.order);
+        const ob = coerceHomeOrderNum(b.order);
         if (oa !== ob) return oa - ob;
         return String(a._slug).localeCompare(String(b._slug));
       });
@@ -363,8 +297,8 @@ function adminApp() {
       });
       for (let cc = 0; cc < 5; cc += 1) {
         cols[cc].sort((a, b) => {
-          const oa = Number(a.order != null ? a.order : 999999);
-          const ob = Number(b.order != null ? b.order : 999999);
+          const oa = coerceHomeOrderNum(a.order);
+          const ob = coerceHomeOrderNum(b.order);
           if (oa !== ob) return oa - ob;
           return String(a._slug).localeCompare(String(b._slug));
         });
@@ -408,11 +342,6 @@ function adminApp() {
 
     hasDraftFor(slug) {
       return !!this.projectDrafts[slug];
-    },
-
-    get canUndoRandomHomeSizes() {
-      const s = this._homeSizeRandomizeSnapshot;
-      return s != null && Object.keys(s).length > 0;
     },
 
     async _loadSiteSettings() {
@@ -513,105 +442,6 @@ function adminApp() {
       return parts.length ? parts.join(' · ') : '';
     },
 
-    normalizeHomeOrder() {
-      const cols = this.visibleHomeProjectCols;
-      let total = 0;
-      for (let c = 0; c < 5; c++) {
-        const items = cols[c];
-        items.forEach((p, i) => {
-          const colNum = c + 1;
-          const slug = p._slug;
-          p.order = i;
-          p.home_col = colNum;
-          const ex = this.projectDrafts[slug];
-          const pl = { order: i, home_col: colNum };
-          if (ex) {
-            ex.payload = { ...ex.payload, ...pl };
-          } else {
-            this.projectDrafts[slug] = {
-              payload: this._projectToPayload(p, pl),
-              thumbFile: null,
-              videoFile: null,
-              isNew: false,
-              version: p.version,
-            };
-          }
-          total++;
-        });
-      }
-      this.$nextTick(() => this._initMasonry());
-      this._toast(
-        `Ordem normalizada para ${total} projeto(s) em 5 colunas. Publique para salvar.`,
-        'success',
-      );
-    },
-
-    randomizeHomeSizes() {
-      const targets = this.visibleHomeProjects;
-      if (!targets.length) {
-        this._toast('Nenhum projeto com «Exibir na Home» para aleatorizar.', 'warning');
-        return;
-      }
-      if (!this._homeSizeRandomizeSnapshot) {
-        const snap = {};
-        for (const p of targets) {
-          snap[p._slug] = { home_size: p.home_size || '1x1' };
-        }
-        this._homeSizeRandomizeSnapshot = snap;
-      }
-      const pool = buildBalancedSizePool(targets.length);
-      targets.forEach((p, i) => {
-        const size = pool[i] || '1x1';
-        const key = p._slug;
-        const ex = this.projectDrafts[key];
-        if (ex) {
-          ex.payload = { ...ex.payload, home_size: size };
-        } else {
-          this.projectDrafts[key] = {
-            payload: this._projectToPayload(p, { home_size: size }),
-            thumbFile: null,
-            videoFile: null,
-            isNew: false,
-            version: p.version,
-          };
-        }
-        const live = this.projects.find((x) => x._slug === key);
-        if (live) {
-          live.home_size = size;
-        }
-      });
-      this.$nextTick(() => this._relayoutMasonry());
-      this._toast(
-        `Formatos (rascunho) aleatorizados para ${targets.length} projeto(s). Coluna/ordem mantêm-se; publique para salvar.`,
-        'success',
-      );
-    },
-
-    /**
-     * Repõe `home_size` na grade e em `projectDrafts[*].payload` ao estado
-     * anterior à **primeira** «Aleatorizar formatos» desta sequência.
-     */
-    discardRandomizedHomeSizes() {
-      const snap = this._homeSizeRandomizeSnapshot;
-      if (!snap || !Object.keys(snap).length) {
-        this._toast('Nada para reverter.', 'warning');
-        return;
-      }
-      for (const p of this.projects) {
-        if (!Object.prototype.hasOwnProperty.call(snap, p._slug)) continue;
-        const entry = snap[p._slug];
-        const h = typeof entry === 'object' && entry != null ? entry.home_size : entry;
-        p.home_size = h || '1x1';
-        const d = this.projectDrafts[p._slug];
-        if (d) {
-          d.payload.home_size = p.home_size;
-        }
-      }
-      this._homeSizeRandomizeSnapshot = null;
-      this.$nextTick(() => this._relayoutMasonry());
-      this._toast('Tamanhos repostos. As alterações continuam em rascunho até «Publicar».', 'success');
-    },
-
     _numOrNull(v) {
       if (v == null || v === '') return null;
       const n = Number(v);
@@ -627,7 +457,7 @@ function adminApp() {
         client: p.client || '',
         date_mmddyyyy: p.date_mmddyyyy || '',
         year: p.year != null ? p.year : null,
-        order: p.order != null ? Number(p.order) : 0,
+        order: displayHomeOrderBadge(p),
         home_col: Math.max(1, Math.min(5, Number(p.home_col) || 1)),
         home_size: p.home_size || '1x1',
         show_on_home: truthyShowOnHome(p) ? 1 : 0,
@@ -643,7 +473,8 @@ function adminApp() {
         out.show_on_home = truthyShowOnHome({ show_on_home: overrides.show_on_home }) ? 1 : 0;
       }
       if (overrides.order !== undefined) {
-        out.order = Number(overrides.order) || 0;
+        const n = Number(overrides.order);
+        out.order = Number.isFinite(n) && n >= 1 ? n : 1;
       }
       if (overrides.home_col !== undefined) {
         out.home_col = Math.max(1, Math.min(5, Number(overrides.home_col) || 1));
@@ -670,7 +501,9 @@ function adminApp() {
           _slug: project._slug,
         };
         this.form.show_on_home = truthyShowOnHome(this.form);
-        if (this.form.order == null) this.form.order = 0;
+        if (this.form.order == null || this.form.order === '' || Number(this.form.order) < 1) {
+          this.form.order = 1;
+        }
         if (this.form.home_col == null || this.form.home_col === '') this.form.home_col = 1;
         if (!Array.isArray(this.form.service_types)) {
           this.form.service_types = [];
@@ -704,7 +537,7 @@ function adminApp() {
       this.form.year = pl.year != null ? pl.year : this.form.year;
       this.form.home_size = pl.home_size || '1x1';
       this.form.show_on_home = truthyShowOnHome(pl);
-      this.form.order = pl.order != null ? pl.order : 0;
+      this.form.order = displayHomeOrderBadge({ order: pl.order });
       this.form.home_col = pl.home_col != null ? pl.home_col : 1;
       this.form.youtube_url = pl.youtube_url || '';
       this.form.pixieset_url = pl.pixieset_url || '';
@@ -746,7 +579,7 @@ function adminApp() {
         home_size: '1x1',
         show_on_home: false,
         home_col: 1,
-        order: 0,
+        order: 1,
         youtube_url: '',
         pixieset_url: '',
         body: '',
@@ -866,8 +699,9 @@ function adminApp() {
     },
 
     _buildPayloadFromForm(slugForUploads) {
-      const orderVal =
-        this.form.order != null && this.form.order !== '' ? Number(this.form.order) : 0;
+      let orderVal =
+        this.form.order != null && this.form.order !== '' ? Number(this.form.order) : 1;
+      if (!Number.isFinite(orderVal) || orderVal < 1) orderVal = 1;
       const hcVal =
         this.form.home_col != null && this.form.home_col !== '' ? Number(this.form.home_col) : 1;
       const homeCol = Math.max(1, Math.min(5, Number.isFinite(hcVal) ? hcVal : 1));
@@ -879,7 +713,7 @@ function adminApp() {
         client: this.form.client || '',
         date_mmddyyyy: this.form.date_mmddyyyy || '',
         year: this.form.year ? Number(this.form.year) : null,
-        order: Number.isFinite(orderVal) ? orderVal : 0,
+        order: orderVal,
         home_col: homeCol,
         home_size: this.form.home_size || '1x1',
         show_on_home: this.form.show_on_home ? 1 : 0,
@@ -929,7 +763,7 @@ function adminApp() {
           p.home_size = this.form.home_size || '1x1';
           p.client = this.form.client || '';
           p.show_on_home = this.form.show_on_home ? 1 : 0;
-          p.order = payload.order != null ? payload.order : 0;
+          p.order = payload.order != null ? payload.order : 1;
           p.home_col = payload.home_col;
           if (this.form.thumbnail) p.thumbnail = this.form.thumbnail;
           if (this.form.hover_preview) p.hover_preview = this.form.hover_preview;
@@ -1022,7 +856,6 @@ function adminApp() {
 
         await this._loadProjects({ silent: true });
         if (siteDraft) await this._loadSiteSettings();
-        this._homeSizeRandomizeSnapshot = null;
         this.closeEditor();
         if (this.view === 'home') {
           this.$nextTick(() => this._relayoutMasonry());
@@ -1472,7 +1305,7 @@ function adminApp() {
 
     _renderHomeItemHtml(p, colNum) {
       const size = p.home_size || '1x1';
-      const order = p.order != null ? p.order : 0;
+      const order = displayHomeOrderBadge(p);
       const slug = p._slug || '';
       const title = this._escHtml(p.title || '');
       const client = this._escHtml(p.client || '');
@@ -1663,11 +1496,12 @@ function adminApp() {
           const slug = node.getAttribute('data-slug');
           if (!slug) return;
 
-          node.setAttribute('data-order', String(i));
+          const pos = i + 1;
+          node.setAttribute('data-order', String(pos));
           node.setAttribute('data-home-col', String(colNum));
 
           const orderBadge = node.querySelector('.gc-badge.order');
-          if (orderBadge) orderBadge.textContent = '#' + i;
+          if (orderBadge) orderBadge.textContent = '#' + pos;
           const homeBadge = node.querySelector('.gc-badge.home');
           if (homeBadge) homeBadge.textContent = 'C' + colNum;
 
@@ -1681,11 +1515,11 @@ function adminApp() {
 
           const p = this.projects.find((x) => x._slug === slug);
           if (p) {
-            p.order = i;
+            p.order = pos;
             p.home_col = colNum;
           }
           const ex = this.projectDrafts[slug];
-          const pl = { order: i, home_col: colNum };
+          const pl = { order: pos, home_col: colNum };
           if (ex) {
             ex.payload = { ...ex.payload, ...pl };
           } else if (p) {
